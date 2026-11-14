@@ -12,8 +12,6 @@ const NAV_ITEMS: { id: TabId; label: string }[] = [
   { id: 'map', label: 'Ocean Map' },
   { id: 'trends', label: 'Trend Explorer' },
   { id: 'routes', label: 'Route Lab' },
-  { id: 'slides', label: 'Presentation' },
-  { id: 'feasibility', label: 'Feasibility & Data' },
 ];
 
 export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: TopBarProps) {

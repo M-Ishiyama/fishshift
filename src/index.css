@@ -42,3 +42,12 @@ input[type="range"] {
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
+
+/* Keep the top navigation scrollable without a visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

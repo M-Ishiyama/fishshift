@@ -1,4 +1,4 @@
-export type TabId = 'map' | 'trends' | 'routes' | 'slides' | 'feasibility';
+export type TabId = 'map' | 'trends' | 'routes';
 
 export type RegionId = 'tsugaru' | 'sanriku';
 

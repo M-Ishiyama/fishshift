@@ -1,0 +1,6 @@
+.git
+.npm-cache
+.vercel
+node_modules
+dist
+.env*

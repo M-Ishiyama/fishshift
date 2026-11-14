@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react';
 import { DemoBanner, DEMO_STEPS } from './components/DemoBanner';
-import { FeasibilityView } from './components/FeasibilityView';
 import { OceanMapView } from './components/OceanMapView';
-import { PresentationView } from './components/PresentationView';
 import { RouteLabView } from './components/RouteLabView';
 import { TopBar } from './components/TopBar';
 import { TrendExplorerView } from './components/TrendExplorerView';
@@ -174,9 +172,6 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'slides' && <PresentationView />}
-
-        {activeTab === 'feasibility' && <FeasibilityView />}
       </main>
 
       <footer className="border-t border-slate-800/80 bg-[#070B12] py-4 px-6">

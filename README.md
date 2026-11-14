@@ -4,6 +4,8 @@
 
 # Run and deploy your AI Studio apppp
 
+For the current React + Vite app, see [DEPLOYMENT.md](DEPLOYMENT.md) for public Vercel deployment. The current implementation does not require a Gemini API key; the AI Studio setup instructions below are from the original template.
+
 This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/6b42cf8d-a676-4f9d-ace3-ca403e8d0e5b
