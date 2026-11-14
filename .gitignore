@@ -1,25 +1,8 @@
-cat > .gitignore <<'EOF'
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-.pytest_cache/
-
-# Secrets
-.env
-.env.*
-!.env.example
-.streamlit/secrets.toml
-*.pem
-*.key
-
-# OS / IDE
+node_modules/
+build/
+dist/
+coverage/
 .DS_Store
-.vscode/
-
-# Large data / generated files
-data/raw/
-data/cache/
-*.nc
-*.h5
-EOF
+*.log
+.env*
+!.env.example
