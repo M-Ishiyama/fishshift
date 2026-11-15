@@ -1,0 +1,47 @@
+# Change Request: 対象海域への「米国メキシコ湾岸・ヒューストン沖」および暖水域魚種の追加
+
+`DESIGN.md` の仕様・原則（実データ検証の徹底、認証不要な事前スナップショット構成、GeoJSONの `[lon, lat]` 厳守、欠損値の0埋め禁止）に従い、既存の日本近海プリセットに加えて **米国メキシコ湾岸・ヒューストン／ガルベストン沖（Houston–Galveston Offshore）** を対象海域として追加してください。
+
+---
+
+## 1. 対象海域・魚種の設定追加（`src/config.py`）
+1. **新規プリセット海域の追加**
+   - `id`: `"houston"`
+   - `name_ja`: `"米国メキシコ湾岸・ヒューストン沖"`
+   - `name_en`: `"US Gulf Coast / Houston–Galveston Offshore"`
+   - `bbox`: `(-96.2, 27.0, -92.8, 30.0)` ※ `(west, south, east, north)` の順・西経は負値（`-180..180` 系）
+   - 仮想出港点（`Route Lab` デフォルト原点）: ガルベストン沖（例: `(29.24, -94.68)`、陸上点でないことを検証すること）
+2. **暖水域向け対象魚種の追加**
+   - `Thunnus albacares`（キハダマグロ / Yellowfin Tuna）を魚種選択肢に追加する。
+   - **重要**: 追加前に `OBIS API v3` で学名解決および上記 `houston` BBox 内の実際の出現レコード件数を確認すること。もし日本近海魚種（サケ等）で `houston` 内の記録が0件になる場合は、エラーにせず「当該海域での過去出現記録なし」とUIで誠実に表示し、代替魚種（`Thunnus albacares` 等）を案内すること。
+
+## 2. バッチ取得・前処理スクリプトの拡張（`scripts/`）
+既存の `prepare_nasa.py` / `prepare_obis.py` / `prepare_weather.py`（および `prepare_wind.py`）が `houston` 領域も処理できるように拡張し、以下を必ず検証すること：
+1. **経度座標系の正規化（0〜360° vs -180〜180°）**
+   - NASA NetCDF / OPeNDAP データが `0..360°E` 系（例: `-94.5°` が `265.5°`）で格納されている場合、切り出し前に `-180..180` 系へ正規化するか、BBox側を適切に変換して切り出すこと。
+   - GeoJSON 出力時は常に `[longitude, latitude]`（西経は負値）とすること。
+2. **NASA 風データの補足（任意・利用時）**
+   - 緯度 `27.0–30.0°N` は `CYGNSS` 観測帯（±38°）にも含まれるが、風向ベクトルを含む主データは引き続き `CCMP` / `ASCAT` を優先し、取得できた実データのみ `provenance.json` と `datasets.yaml` に記録すること。
+3. **成果物生成**
+   - `data/processed/` 内の各スナップショット（`ocean_timeseries.parquet`, `ocean_map.parquet`, `fish_occurrences.geojson`, `route_weather.json`）に `region_id == "houston"` のデータを追加する。
+
+## 3. UI・可視化対応（`src/ui/pages/`）
+1. **海域セレクターの拡張**
+   - `Ocean Map`、`Trend Explorer`、`Route Lab` の海域切替に `米国メキシコ湾岸・ヒューストン沖` を追加する。
+   - `Trend Explorer` では日本近海（`tsugaru` / `sanriku`）とメキシコ湾（`houston`）の温暖化傾向や年平均水温差を比較できるよう連動させる。
+2. **西経（°W）の表記対応**
+   - 画面上の緯度経度ラベル、ホバーツールチップ、BBox表示では、`lon < 0` の場合に `-94.5°E` のような誤表記をせず `94.5°W`（西経表記）で表示するフォーマット関数を用意する。
+3. **SST カラースケール拡張**
+   - メキシコ湾は夏季に表層水温が `28–30°C` 付近まで上昇するため、日本近海（`4–24°C` 想定）で上端が飽和しないよう、SST 凡例・カラースケールを `4–30°C` 相当へ拡張するか、海域連動のカラースケールと明確な凡例数値を表示する。
+4. **陸地・沿岸マスクと安全免責**
+   - テキサス／ルイジアナ沿岸およびガルベストン湾の陸地領域を海面データと混同しないこと。`Route Lab` では実港湾・浅瀬・石油プラットフォーム等の航行障害物を考慮していないため、既存の免責表示（`Experimental estimation — not for navigation`）を継続表示する。
+
+## 4. テスト追加（`tests/`）
+- `T-R01`: `0..360` 経度から `-180..180` 経度への正規化変換テスト（例: `265.5 -> -94.5`）および `houston` BBox 切り出しが正常に動くテスト。
+- `T-R02`: 西経座標を含む GeoJSON シリアライズが `[negative_lon, lat]` 順であるテスト、およびUI表示用の `format_lon(-94.68) == "94.68°W"` テスト。
+- `T-R03`: 西経座標間（`houston` 領域内）の `calculate_route_distance_km`（Haversine距離）と `compute_trend` が異常なく動作するテスト。
+
+## 5. 完了条件
+- `houston` 海域で `Ocean Map`（SST / Chl-a / OBIS / 風・海流）、`Trend Explorer`、`Route Lab` がすべて正常に描画・計算されること。
+- 新規テストを含む `pytest` が全件パスすること。
+- `About & Data` および `README.md` に追加海域の観測範囲・データ出典・制約が追記されていること。

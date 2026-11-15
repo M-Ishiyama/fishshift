@@ -1,27 +1,34 @@
-import { Play, Square } from 'lucide-react';
-import { useT } from '../i18n/I18nProvider';
-import type { TabId } from '../types/ocean';
-import { LanguageSwitcher } from './LanguageSwitcher';
+import { Globe, Play, Square } from 'lucide-react';
+import type { Locale, TabId } from '../types/ocean';
 
 interface TopBarProps {
   activeTab: TabId;
   onSelectTab: (tab: TabId) => void;
   demoActive: boolean;
   onToggleDemo: () => void;
+  locale: Locale;
+  onChangeLocale: (locale: Locale) => void;
 }
 
 const NAV_ITEMS: { id: TabId; label: string }[] = [
   { id: 'map', label: 'Ocean Map' },
   { id: 'trends', label: 'Trend Explorer' },
   { id: 'routes', label: 'Route Lab' },
+  { id: 'slides', label: 'Presentation' },
+  { id: 'feasibility', label: 'Feasibility & Data' },
 ];
 
-export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: TopBarProps) {
-  const t = useT();
-
+export function TopBar({
+  activeTab,
+  onSelectTab,
+  demoActive,
+  onToggleDemo,
+  locale,
+  onChangeLocale,
+}: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#070B12]/95 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-8 px-6 py-3.5">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-6 px-6 py-3.5">
         <button
           type="button"
           onClick={() => onSelectTab('map')}
@@ -59,8 +66,39 @@ export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: Top
           })}
         </nav>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <LanguageSwitcher />
+        <div className="flex items-center gap-3 shrink-0">
+          <div
+            role="group"
+            aria-label={locale === 'ja' ? '表示言語切替' : 'Language selector'}
+            className="inline-flex items-center rounded-md border border-slate-800 bg-[#0D1524] p-0.5"
+          >
+            <Globe className="ml-1.5 mr-1 h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => onChangeLocale('ja')}
+              aria-pressed={locale === 'ja'}
+              className={`rounded px-2 py-1 font-mono text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                locale === 'ja'
+                  ? 'bg-cyan-500/20 text-cyan-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              JP
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeLocale('en')}
+              aria-pressed={locale === 'en'}
+              className={`rounded px-2 py-1 font-mono text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                locale === 'en'
+                  ? 'bg-cyan-500/20 text-cyan-300'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              EN
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={onToggleDemo}
@@ -73,12 +111,12 @@ export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: Top
             {demoActive ? (
               <>
                 <Square className="h-3.5 w-3.5" />
-                <span>{t('demo.stop')}</span>
+                <span>{locale === 'ja' ? 'デモ終了' : 'Stop Demo'}</span>
               </>
             ) : (
               <>
                 <Play className="h-3.5 w-3.5" />
-                <span>{t('demo.start')}</span>
+                <span>{locale === 'ja' ? 'デモ再生' : 'Play Demo'}</span>
               </>
             )}
           </button>

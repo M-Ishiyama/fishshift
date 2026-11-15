@@ -1,20 +1,25 @@
 import { useMemo, useState } from 'react';
-import { Compass, Layers, Navigation, ArrowRight } from 'lucide-react';
-import { GRID_COLS, GRID_ROWS, PROVENANCE, REGIONS, SPECIES_LIST } from '../data/oceanData';
-import { useT } from '../i18n/I18nProvider';
-import { useFormat } from '../i18n/format';
-import { useHotspotText, useName, useNasaSource, useRegionText } from '../i18n/render';
+import { Compass, Layers, Navigation, ArrowRight, CalendarClock } from 'lucide-react';
+import { REGIONS, SPECIES_LIST, formatNasaSource } from '../data/oceanData';
 import type {
+  ConditionBasis,
+  DepartureSlot,
   FishOccurrence,
+  FuelType,
   HotspotCandidate,
+  Locale,
   MapLayer,
+  ObisCountSummary,
   OceanGridCell,
   PointLatLon,
   RegionId,
+  RouteEstimate,
   SpeciesId,
+  VesselParams,
 } from '../types/ocean';
 
 interface OceanMapViewProps {
+  locale: Locale;
   regionId: RegionId;
   onChangeRegion: (id: RegionId) => void;
   speciesId: SpeciesId;
@@ -29,23 +34,41 @@ interface OceanMapViewProps {
   onToggleObis: () => void;
   showCurrents: boolean;
   onToggleCurrents: () => void;
+  showWinds: boolean;
+  onToggleWinds: () => void;
   showRoutes: boolean;
   onToggleRoutes: () => void;
   grid: OceanGridCell[];
+  isLoadingData: boolean;
   hotspots: HotspotCandidate[];
   selectedHotspotId: string;
   onSelectHotspot: (id: string) => void;
   occurrences: FishOccurrence[];
+  obisSummary: ObisCountSummary | null;
   routeA: PointLatLon[];
   routeB: PointLatLon[];
+  departureSlot: DepartureSlot;
+  onChangeDepartureSlot: (slot: DepartureSlot) => void;
+  conditionBasis: ConditionBasis;
+  onChangeConditionBasis: (basis: ConditionBasis) => void;
+  vessel: VesselParams;
+  onChangeFuelType: (fuelType: FuelType) => void;
+  estimateA: RouteEstimate;
+  estimateB: RouteEstimate;
   onGoToRouteLab: () => void;
 }
 
+const MONTH_NAMES_JA = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+const MONTH_NAMES_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatLon(lon: number, digits = 1): string {
+  return `${Math.abs(lon).toFixed(digits)}${lon >= 0 ? '°E' : '°W'}`;
+}
 
 function sstToColor(sst: number | null): string {
   if (sst === null) return 'transparent';
-  // Scale 0°C -> 30°C, covering the observed range of the prefetched NASA SST.
-  const t = Math.max(0, Math.min(1, sst / 30));
+  // Scale 4°C -> 29°C
+  const t = Math.max(0, Math.min(1, (sst - 4) / 25));
   if (t < 0.35) {
     const k = t / 0.35;
     return `rgb(${Math.round(14 + k * 8)}, ${Math.round(45 + k * 85)}, ${Math.round(120 + k * 75)})`;
@@ -82,6 +105,7 @@ function habitatToColor(score: number | null): string {
 }
 
 export function OceanMapView({
+  locale,
   regionId,
   onChangeRegion,
   speciesId,
@@ -96,31 +120,37 @@ export function OceanMapView({
   onToggleObis,
   showCurrents,
   onToggleCurrents,
+  showWinds,
+  onToggleWinds,
   showRoutes,
   onToggleRoutes,
   grid,
+  isLoadingData,
   hotspots,
   selectedHotspotId,
   onSelectHotspot,
   occurrences,
+  obisSummary,
   routeA,
   routeB,
+  departureSlot,
+  onChangeDepartureSlot,
+  conditionBasis,
+  onChangeConditionBasis,
+  vessel,
+  onChangeFuelType,
+  estimateA,
+  estimateB,
   onGoToRouteLab,
 }: OceanMapViewProps) {
-  const t = useT();
-  const fmt = useFormat();
-  const name = useName();
-  const regionText = useRegionText();
-  const hotspotText = useHotspotText();
-  const nasaSource = useNasaSource();
   const region = REGIONS[regionId];
   const species = SPECIES_LIST[speciesId];
   const [hoveredCell, setHoveredCell] = useState<OceanGridCell | null>(null);
 
   const svgWidth = 780;
   const svgHeight = 520;
-  const rows = GRID_ROWS;
-  const cols = GRID_COLS;
+  const rows = 20;
+  const cols = 26;
   const cellW = svgWidth / cols;
   const cellH = svgHeight / rows;
 
@@ -157,40 +187,40 @@ export function OceanMapView({
     [routeB, region]
   );
 
+  const isJa = locale === 'ja';
+
   const legendMeta = useMemo(() => {
     if (layer === 'sst') {
       return {
-        title: t('map.legend.sst.title'),
-        min: '0.0°C',
-        mid: '15.0°C',
-        max: '30.0°C',
+        title: isJa ? '海面水温 SST (°C)' : 'Sea Surface Temperature SST (°C)',
+        min: '4.0°C',
+        mid: '16.5°C',
+        max: '29.0°C',
         gradient: 'linear-gradient(90deg, rgb(14,45,120), rgb(22,130,195), rgb(167,195,100), rgb(245,90,35))',
-        source: t('map.legend.observed', {
-          source: nasaSource(PROVENANCE.sst, { withDataset: true }),
-        }),
+        source: formatNasaSource('sst', locale),
       };
     }
     if (layer === 'chlor_a') {
       return {
-        title: t('map.legend.chlorA.title'),
+        title: isJa ? 'クロロフィルa濃度 (mg/m³)' : 'Chlorophyll-a Concentration (mg/m³)',
         min: '0.1',
         mid: '0.8',
         max: '3.5+',
         gradient: 'linear-gradient(90deg, rgb(10,35,80), rgb(18,130,135), rgb(113,218,85))',
-        source: t('map.legend.observed', {
-          source: nasaSource(PROVENANCE.chlorA, { withDataset: true }),
-        }),
+        source: formatNasaSource('chlor_a', locale),
       };
     }
     return {
-      title: t('map.legend.habitat.title'),
+      title: isJa ? '探索用環境適合指数 (0–100)' : 'Exploratory Suitability Index (0–100)',
       min: '0',
       mid: '50',
       max: '100',
       gradient: 'linear-gradient(90deg, rgb(13,25,48), rgb(19,100,130), rgb(54,218,225))',
-      source: t('map.legend.habitatSource'),
+      source: isJa
+        ? '探索用合成指数 (0.40×NASA SST + 0.35×NASA Chl-a + 0.25×OBIS実測一致)'
+        : 'Exploratory Composite (0.40×NASA SST + 0.35×NASA Chl-a + 0.25×Exact OBIS Hit)',
     };
-  }, [layer, nasaSource, t]);
+  }, [layer, isJa, locale]);
 
   const latTicks = useMemo(() => {
     const step = (region.bbox.north - region.bbox.south) / 4;
@@ -202,20 +232,47 @@ export function OceanMapView({
     return [1, 2, 3].map((i) => Number((region.bbox.west + step * i).toFixed(1)));
   }, [region]);
 
+  const obisCountLabel = useMemo(() => {
+    if (!obisSummary) {
+      return isJa ? `OBIS 実測記録 (${occurrences.length}件)` : `OBIS Records (${occurrences.length})`;
+    }
+    if (obisSummary.totalCount === 0) {
+      return isJa ? 'OBIS 実測記録 (0件)' : 'OBIS Records (0 observed)';
+    }
+    if (obisSummary.totalCount > occurrences.length) {
+      return isJa
+        ? `OBIS 実測記録 (${occurrences.length}/${obisSummary.totalCount.toLocaleString()}件描画)`
+        : `OBIS Records (${occurrences.length}/${obisSummary.totalCount.toLocaleString()} pts)`;
+    }
+    return isJa
+      ? `OBIS 実測記録 (${obisSummary.totalCount}件 · ${obisSummary.datasetCount}DB)`
+      : `OBIS Records (${obisSummary.totalCount} pts · ${obisSummary.datasetCount} DBs)`;
+  }, [obisSummary, occurrences.length, isJa]);
+
   return (
     <div className="mx-auto max-w-[1440px] px-6 py-5">
       {/* Metadata context bar (no pill boxes) */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-slate-50">
-            {t('map.heading')}
+            {isJa ? '海洋環境・餌場予測探索マップ' : 'Ocean Environment & Forage Suitability Explorer'}
           </h1>
           <p className="mt-0.5 text-xs text-slate-400">
-            <span>{t('map.subtitle.data')}</span>
+            <span>
+              {isJa
+                ? '衛星観測: NASA JPL SST / NASA OB.DAAC Chl-a (via NOAA CoastWatch ERDDAP)'
+                : 'Satellite Obs: NASA JPL SST / NASA OB.DAAC Chl-a (via NOAA CoastWatch ERDDAP)'}
+            </span>
             <span className="mx-2 text-slate-600">·</span>
-            <span>{t('map.subtitle.region', { region: name(region) })}</span>
+            <span>
+              {isJa ? '対象海域' : 'Region'}: {isJa ? region.nameJa : region.nameEn}
+            </span>
             <span className="mx-2 text-slate-600">·</span>
-            <span>{t('map.subtitle.obisCaveat')}</span>
+            <span>
+              {isJa
+                ? 'OBIS出現点は実測記録のみ描画（水増し・内挿なし／現在位置ではありません）'
+                : 'OBIS dots plot real records only (no padding/interpolation; not live fish)'}
+            </span>
           </p>
         </div>
 
@@ -225,7 +282,9 @@ export function OceanMapView({
           className="inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-medium text-cyan-300 hover:bg-cyan-500/20 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Navigation className="h-3.5 w-3.5" />
-          <span>{t('map.cta.routeLab')}</span>
+          <span>
+            {isJa ? '選択ポイントへ省燃料ルート試算' : 'Estimate Fuel Route to Selected Point'}
+          </span>
           <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -237,7 +296,7 @@ export function OceanMapView({
           {/* Region Selector */}
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-2">
-              {t('map.control.region')}
+              {isJa ? '対象海域（プリセット）' : 'Target Region (Presets)'}
             </label>
             <div className="grid grid-cols-1 gap-1.5">
               {(Object.keys(REGIONS) as RegionId[]).map((id) => {
@@ -254,9 +313,9 @@ export function OceanMapView({
                         : 'border-slate-800 bg-[#070B12]/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                     }`}
                   >
-                    <div className="font-semibold">{name(r)}</div>
+                    <div className="font-semibold">{isJa ? r.nameJa : r.nameEn}</div>
                     <div className="mt-0.5 font-mono text-[11px] text-slate-500 tabular-nums">
-                      {r.bbox.south}–{r.bbox.north}°N · {r.bbox.west}–{r.bbox.east}°E
+                      {r.bbox.south}–{r.bbox.north}°N · {formatLon(r.bbox.west)}–{formatLon(r.bbox.east)}
                     </div>
                   </button>
                 );
@@ -267,7 +326,7 @@ export function OceanMapView({
           {/* Species Selector */}
           <div>
             <label htmlFor="species-select" className="block text-xs font-medium text-slate-400 mb-2">
-              {t('map.control.species')}
+              {isJa ? '対象魚種（OBIS学名基準）' : 'Target Species (OBIS Taxonomic Standard)'}
             </label>
             <select
               id="species-select"
@@ -279,13 +338,13 @@ export function OceanMapView({
                 const sp = SPECIES_LIST[id];
                 return (
                   <option key={id} value={id}>
-                    {name(sp)} ({sp.scientificName})
+                    {isJa ? sp.nameJa : sp.nameEn} ({sp.scientificName})
                   </option>
                 );
               })}
             </select>
             <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
-              {t(species.forageNoteKey)}
+              {isJa ? species.forageNoteJa : species.forageNoteEn}
             </p>
           </div>
 
@@ -293,14 +352,14 @@ export function OceanMapView({
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-400">
               <Layers className="h-3.5 w-3.5" />
-              <span>{t('map.control.baseLayer')}</span>
+              <span>{isJa ? '衛星・解析ベースレイヤー' : 'Satellite & Index Base Layer'}</span>
             </div>
             <div className="grid grid-cols-3 gap-1 rounded-md bg-[#070B12] p-1 border border-slate-800">
               {(
                 [
-                  { id: 'sst', label: t('map.layer.sst') },
+                  { id: 'sst', label: isJa ? '海面水温' : 'SST' },
                   { id: 'chlor_a', label: 'Chl-a' },
-                  { id: 'habitat', label: t('map.layer.habitat') },
+                  { id: 'habitat', label: isJa ? '適合指数' : 'Suitability' },
                 ] as { id: MapLayer; label: string }[]
               ).map((item) => (
                 <button
@@ -321,15 +380,24 @@ export function OceanMapView({
 
           {/* Time Scrubber */}
           <div>
-            <div className="mb-1.5 flex items-center justify-between text-xs">
-              <span className="font-medium text-slate-400">{t('map.control.timeSlider')}</span>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="font-medium text-slate-400">
+                {isJa ? '過去衛星観測スライダー' : 'Historical Satellite Scrubber'}
+              </span>
               <span className="font-mono font-semibold text-cyan-300 tabular-nums">
-                {fmt.yearMonth(year, month)}
+                {isJa
+                  ? `${year}年 ${MONTH_NAMES_JA[month - 1]}`
+                  : `${year} ${MONTH_NAMES_EN[month - 1]}`}
               </span>
             </div>
+            <p className="mb-2 text-[10px] text-slate-500">
+              {isJa
+                ? '衛星SST / Chl-a / 適合指数の閲覧用（翌日航路案は11/15基準で算出）'
+                : 'Inspect historical SST / Chl-a / Suitability (Next-day routes anchored to Nov 15)'}
+            </p>
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <span className="w-12 shrink-0 font-mono text-[11px] text-slate-500">{t('map.slider.year')}</span>
+                <span className="w-8 font-mono text-[11px] text-slate-500">{isJa ? '年' : 'Yr'}</span>
                 <input
                   type="range"
                   min={2016}
@@ -340,7 +408,7 @@ export function OceanMapView({
                 />
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-12 shrink-0 font-mono text-[11px] text-slate-500">{t('map.slider.month')}</span>
+                <span className="w-8 font-mono text-[11px] text-slate-500">{isJa ? '月' : 'Mo'}</span>
                 <input
                   type="range"
                   min={1}
@@ -357,13 +425,11 @@ export function OceanMapView({
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-400">
               <Compass className="h-3.5 w-3.5" />
-              <span>{t('map.control.overlays')}</span>
+              <span>{isJa ? '重ね合わせレイヤー' : 'Overlay Layers'}</span>
             </div>
             <div className="space-y-2 text-xs">
               <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
-                <span className="text-slate-300">
-                  {t('map.overlay.obis', { count: fmt.integer(occurrences.length) })}
-                </span>
+                <span className="text-slate-300">{obisCountLabel}</span>
                 <input
                   type="checkbox"
                   checked={showObis}
@@ -371,13 +437,10 @@ export function OceanMapView({
                   className="h-4 w-4 accent-amber-400"
                 />
               </label>
-              {showObis && occurrences.length === 0 && (
-                <p className="px-3 text-[11px] leading-snug text-amber-300/80">
-                  {t('map.overlay.obisEmpty')}
-                </p>
-              )}
               <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
-                <span className="text-slate-300">{t('map.overlay.currents')}</span>
+                <span className="text-slate-300">
+                  {isJa ? '海流ベクトル (流速・流向)' : 'Ocean Currents (Speed & Dir)'}
+                </span>
                 <input
                   type="checkbox"
                   checked={showCurrents}
@@ -386,7 +449,20 @@ export function OceanMapView({
                 />
               </label>
               <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
-                <span className="text-slate-300">{t('map.overlay.routes')}</span>
+                <span className="text-slate-300">
+                  {isJa ? '海上風ベクトル (風速・風向)' : 'Surface Winds (Speed & Dir)'}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={showWinds}
+                  onChange={onToggleWinds}
+                  className="h-4 w-4 accent-emerald-400"
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
+                <span className="text-slate-300">
+                  {isJa ? '翌日出航航路案 (2026-11-15)' : 'Next-Day Departure Routes (2026-11-15)'}
+                </span>
                 <input
                   type="checkbox"
                   checked={showRoutes}
@@ -395,11 +471,93 @@ export function OceanMapView({
                 />
               </label>
             </div>
+
+            {showRoutes && (
+              <div className="mt-2.5 space-y-2 border-t border-slate-800/80 pt-2.5 text-[11px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-400">{isJa ? '出航時間帯' : 'Departure'}</span>
+                  <div className="grid grid-cols-3 gap-1 rounded bg-[#070B12] p-0.5 border border-slate-800">
+                    {(['04:00', '09:00', '15:00'] as DepartureSlot[]).map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => onChangeDepartureSlot(slot)}
+                        className={`rounded px-1.5 py-0.5 font-mono text-[10px] cursor-pointer transition-colors ${
+                          departureSlot === slot
+                            ? 'bg-cyan-500/20 text-cyan-300'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-400">{isJa ? '海況根拠' : 'Basis'}</span>
+                  <div className="grid grid-cols-2 gap-1 rounded bg-[#070B12] p-0.5 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => onChangeConditionBasis('historical_climatology')}
+                      className={`rounded px-2 py-0.5 text-[10px] cursor-pointer transition-colors ${
+                        conditionBasis === 'historical_climatology'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {isJa ? '過去統計' : 'Historical'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChangeConditionBasis('next_day_forecast')}
+                      className={`rounded px-2 py-0.5 text-[10px] cursor-pointer transition-colors ${
+                        conditionBasis === 'next_day_forecast'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {isJa ? '翌日予報' : 'Forecast'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-400">{isJa ? '燃料種別' : 'Fuel Type'}</span>
+                  <div className="grid grid-cols-2 gap-1 rounded bg-[#070B12] p-0.5 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => onChangeFuelType('gasoline')}
+                      className={`rounded px-2 py-0.5 text-[10px] cursor-pointer transition-colors ${
+                        vessel.fuelType === 'gasoline'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {isJa ? 'ガソリン' : 'Gasoline'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChangeFuelType('diesel')}
+                      className={`rounded px-2 py-0.5 text-[10px] cursor-pointer transition-colors ${
+                        vessel.fuelType === 'diesel'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {isJa ? '軽油/A重油' : 'Diesel'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Disclaimer */}
           <p className="mt-auto border-t border-slate-800 pt-3 text-[11px] leading-relaxed text-slate-500">
-            {t('map.disclaimer')}
+            {isJa
+              ? '欠損（雲域等）は透明ハッチで区別表示し、0として補間していません。適合指数は未検証の探索用モデル値です。'
+              : 'Cloud gaps are shown as transparent hatches rather than zero-filled. Suitability score is an unvalidated exploratory model index.'}
           </p>
         </aside>
 
@@ -421,12 +579,19 @@ export function OceanMapView({
                 <span>{legendMeta.mid}</span>
                 <span>→</span>
                 <span>{legendMeta.max}</span>
-                <span className="ml-2 text-slate-500">{t('map.legend.missing')}</span>
+                <span className="ml-2 text-slate-500">
+                  {isJa ? '□ 欠損(雲)' : '□ Missing (Cloud)'}
+                </span>
               </div>
             </div>
 
             {/* Interactive SVG Ocean Grid */}
             <div className="relative">
+              {isLoadingData && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#060A11]/70 text-xs font-mono text-cyan-300">
+                  {isJa ? 'NASA実観測スナップショット読込中...' : 'Loading NASA observation snapshot...'}
+                </div>
+              )}
               <svg
                 viewBox={`0 0 ${svgWidth} ${svgHeight}`}
                 className="block h-auto w-full cursor-crosshair select-none bg-[#060A11]"
@@ -450,7 +615,17 @@ export function OceanMapView({
                     refY="2.5"
                     orient="auto"
                   >
-                    <path d="M0,0.5 L4.5,2.5 L0,4.5 Z" fill="rgba(226, 232, 240, 0.72)" />
+                    <path d="M0,0.5 L4.5,2.5 L0,4.5 Z" fill="rgba(226, 232, 240, 0.78)" />
+                  </marker>
+                  <marker
+                    id="wind-arrow"
+                    markerWidth="5"
+                    markerHeight="5"
+                    refX="4"
+                    refY="2.5"
+                    orient="auto"
+                  >
+                    <path d="M0,0.5 L4.5,2.5 L0,4.5 Z" fill="#34D399" />
                   </marker>
                 </defs>
 
@@ -535,7 +710,7 @@ export function OceanMapView({
                         fontSize="10"
                         fontFamily="JetBrains Mono, monospace"
                       >
-                        {lon.toFixed(1)}°E
+                        {formatLon(lon, 1)}
                       </text>
                     </g>
                   );
@@ -577,9 +752,37 @@ export function OceanMapView({
                           y1={y - dy * 0.4}
                           x2={x + dx * 0.6}
                           y2={y + dy * 0.6}
-                          stroke="rgba(226, 232, 240, 0.65)"
-                          strokeWidth="1.2"
+                          stroke="rgba(226, 232, 240, 0.72)"
+                          strokeWidth="1.25"
                           markerEnd="url(#current-arrow)"
+                          className="pointer-events-none"
+                        />
+                      );
+                    })}
+
+                {/* Surface Wind Vector Field (interleaved grid cells; arrow points in blowing-TO direction) */}
+                {showWinds &&
+                  grid
+                    .filter((c) => !c.isLand && c.row % 2 === 0 && c.col % 2 === 0)
+                    .map((cell) => {
+                      const { x, y } = project({ lat: cell.lat, lon: cell.lon });
+                      // Meteorological windDirDeg is FROM; +180 converts to blowing-TO vector for visual comparison with currents
+                      const blowingToDeg = (cell.windDirDeg + 180) % 360;
+                      const rad = ((blowingToDeg - 90) * Math.PI) / 180;
+                      const len = Math.min(24, 8 + cell.windSpeedMs * 1.15);
+                      const dx = Math.cos(rad) * len;
+                      const dy = Math.sin(rad) * len;
+                      return (
+                        <line
+                          key={`wind-${cell.row}-${cell.col}`}
+                          x1={x - dx * 0.4}
+                          y1={y - dy * 0.4}
+                          x2={x + dx * 0.6}
+                          y2={y + dy * 0.6}
+                          stroke="rgba(52, 211, 153, 0.82)"
+                          strokeWidth="1.25"
+                          strokeDasharray="2.5 1.5"
+                          markerEnd="url(#wind-arrow)"
                           className="pointer-events-none"
                         />
                       );
@@ -604,24 +807,70 @@ export function OceanMapView({
                     );
                   })}
 
-                {/* Candidate Routes Overlay */}
+                {/* Candidate Routes Overlay (Next-day Departure Proposals) */}
                 {showRoutes && (
                   <g className="pointer-events-none">
-                    <path
-                      d={routeAPath}
-                      fill="none"
-                      stroke="#E2E8F0"
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      strokeOpacity={0.8}
-                    />
                     <path
                       d={routeBPath}
                       fill="none"
                       stroke="#22D3EE"
-                      strokeWidth={2.5}
-                      strokeOpacity={0.95}
+                      strokeWidth={3.4}
+                      strokeOpacity={0.92}
                     />
+                    <path
+                      d={routeAPath}
+                      fill="none"
+                      stroke="#F8FAFC"
+                      strokeWidth={2.0}
+                      strokeDasharray="5 5"
+                      strokeOpacity={0.94}
+                    />
+                    {/* Intermediate Waypoint Dots on Route B */}
+                    {routeB.slice(1, -1).map((wp, idx) => {
+                      const p = project(wp);
+                      return (
+                        <circle
+                          key={`wp-b-${idx}`}
+                          cx={p.x}
+                          cy={p.y}
+                          r={2.8}
+                          fill="#22D3EE"
+                          stroke="#070B12"
+                          strokeWidth={1}
+                        />
+                      );
+                    })}
+                    {/* Mid-route Inline Labels */}
+                    {routeA.length >= 2 && (() => {
+                      const midA = project(routeA[Math.floor(routeA.length / 2)]);
+                      return (
+                        <text
+                          x={midA.x - 6}
+                          y={midA.y - 8}
+                          fill="#F1F5F9"
+                          fontSize="10"
+                          fontWeight="600"
+                          fontFamily="JetBrains Mono, monospace"
+                        >
+                          {isJa ? 'A (最短)' : 'A (Shortest)'}
+                        </text>
+                      );
+                    })()}
+                    {routeB.length >= 3 && (() => {
+                      const midB = project(routeB[Math.floor(routeB.length / 2)]);
+                      return (
+                        <text
+                          x={midB.x + 6}
+                          y={midB.y + 13}
+                          fill="#67E8F9"
+                          fontSize="10"
+                          fontWeight="600"
+                          fontFamily="JetBrains Mono, monospace"
+                        >
+                          {isJa ? 'B (燃費最適)' : 'B (Fuel-Opt)'}
+                        </text>
+                      );
+                    })()}
                     {/* Departure Port Marker */}
                     {(() => {
                       const port = project(region.defaultPort);
@@ -643,7 +892,7 @@ export function OceanMapView({
                             fontSize="11"
                             fontWeight="600"
                           >
-                            {regionText.portName(region)}
+                            {isJa ? region.defaultPort.nameJa : region.defaultPort.nameEn}
                           </text>
                         </g>
                       );
@@ -652,9 +901,10 @@ export function OceanMapView({
                 )}
 
                 {/* Candidate Fishing / Forage Hotspots */}
-                {hotspots.map((spot) => {
+                {hotspots.map((spot, idx) => {
                   const { x, y } = project({ lat: spot.lat, lon: spot.lon });
                   const isSelected = spot.id === selectedHotspot?.id;
+                  const labelChar = ['A', 'B', 'C'][idx] ?? String(idx + 1);
                   return (
                     <g
                       key={spot.id}
@@ -678,7 +928,7 @@ export function OceanMapView({
                         fontWeight="700"
                         fontFamily="JetBrains Mono, monospace"
                       >
-                        {spot.letter}
+                        {labelChar}
                       </text>
                     </g>
                   );
@@ -690,21 +940,44 @@ export function OceanMapView({
                 {hoveredCell ? (
                   <div className="space-y-0.5">
                     <div className="text-slate-400">
-                      {hoveredCell.lat.toFixed(2)}°N, {hoveredCell.lon.toFixed(2)}°E
+                      {hoveredCell.lat.toFixed(2)}°N, {formatLon(hoveredCell.lon, 2)}
                     </div>
                     <div>
-                      SST: {hoveredCell.sst !== null ? `${fmt.number(hoveredCell.sst, 1)} °C` : t('map.probe.missingCloud')}
+                      SST:{' '}
+                      {hoveredCell.sst !== null
+                        ? `${hoveredCell.sst.toFixed(1)} °C`
+                        : isJa
+                          ? '欠損(雲)'
+                          : 'Missing (Cloud)'}
                       <span className="mx-1.5 text-slate-600">|</span>
-                      Chl: {hoveredCell.chlorA !== null ? `${fmt.number(hoveredCell.chlorA, 2)} mg/m³` : t('map.probe.missing')}
+                      Chl:{' '}
+                      {hoveredCell.chlorA !== null
+                        ? `${hoveredCell.chlorA.toFixed(2)} mg/m³`
+                        : isJa
+                          ? '欠損'
+                          : 'Missing'}
                     </div>
                     <div>
-                      {t('map.probe.current')}: {fmt.number(hoveredCell.currentSpeedMs, 2)} m/s ({hoveredCell.currentDirDeg}°)
+                      {isJa
+                        ? `海流: ${hoveredCell.currentSpeedMs.toFixed(2)} m/s (${hoveredCell.currentDirDeg}°へ)`
+                        : `Current: ${hoveredCell.currentSpeedMs.toFixed(2)} m/s (to ${hoveredCell.currentDirDeg}°)`}
                       <span className="mx-1.5 text-slate-600">|</span>
-                      {t('map.probe.wave')}: {fmt.number(hoveredCell.waveHeightM, 1)} m
+                      {isJa
+                        ? `波高: ${hoveredCell.waveHeightM.toFixed(1)} m`
+                        : `Wave: ${hoveredCell.waveHeightM.toFixed(1)} m`}
+                    </div>
+                    <div className="text-emerald-300">
+                      {isJa
+                        ? `海上風: ${hoveredCell.windSpeedMs.toFixed(1)} m/s (${hoveredCell.windDirDeg}°から)`
+                        : `Wind: ${hoveredCell.windSpeedMs.toFixed(1)} m/s (from ${hoveredCell.windDirDeg}°)`}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-slate-400">{t('map.probe.hint')}</div>
+                  <div className="text-slate-400">
+                    {isJa
+                      ? 'マップ上でカーソル移動すると詳細値を計測'
+                      : 'Move cursor over map to probe cell values'}
+                  </div>
                 )}
               </div>
 
@@ -712,24 +985,142 @@ export function OceanMapView({
               <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap items-center gap-4 rounded border border-slate-800 bg-[#070B12]/85 px-3 py-1.5 text-[11px] text-slate-300">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  {t('map.key.obis')}
+                  {obisSummary && obisSummary.totalCount === 0
+                    ? isJa
+                      ? 'OBIS実測 (0件)'
+                      : 'OBIS (0 observed)'
+                    : isJa
+                      ? 'OBIS実測記録'
+                      : 'OBIS Observed'}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-4 bg-slate-200" />
+                  {isJa ? '海流モデル (流向)' : 'Current Model (TO)'}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-emerald-400" />
+                  {isJa ? '海上風モデル (吹く向き)' : 'Wind Model (TO)'}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-slate-200" />
-                  {t('map.key.routeA')}
+                  {isJa ? '翌日案 A (陸地回避・最短)' : 'Next-Day A (Shortest)'}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-0.5 w-4 bg-cyan-400" />
-                  {t('map.key.routeB')}
+                  {isJa ? '翌日案 B (風/波/海流·燃費最適)' : 'Next-Day B (Fuel-Optimal)'}
                 </span>
               </div>
             </div>
           </div>
 
+          {/* Next-Day Departure Route Proposal Summary Strip */}
+          {showRoutes && (
+            <div className="rounded-lg border border-slate-800 bg-[#0D1524] px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-3.5 w-3.5 text-cyan-400" />
+                  <span className="font-semibold text-slate-100">
+                    {isJa
+                      ? `翌日出航航路案 (2026-11-15 ${departureSlot}発)`
+                      : `Next-Day Departure Proposal (2026-11-15 ${departureSlot} Dep.)`}
+                  </span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-slate-400">
+                    {isJa ? '目標' : 'Target'}:{' '}
+                    {isJa
+                      ? selectedHotspot?.labelJa ?? '候補A'
+                      : selectedHotspot?.labelEn ?? 'Candidate A'}
+                  </span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-slate-400">
+                    {isJa ? '根拠: ' : 'Basis: '}
+                    {conditionBasis === 'historical_climatology'
+                      ? isJa
+                        ? '過去11月データ統計ベース'
+                        : 'Historical Nov. Climatology'
+                      : isJa
+                        ? '翌日予報モデル (11/15)'
+                        : 'Next-Day Forecast Model (11/15)'}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onGoToRouteLab}
+                  className="text-xs font-medium text-cyan-300 hover:text-cyan-200 cursor-pointer whitespace-nowrap"
+                >
+                  {isJa ? '詳細比較・感度調整 →' : 'Details & Sensitivity →'}
+                </button>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-1 gap-3 md:grid-cols-3 text-xs font-mono tabular-nums">
+                <div>
+                  <div className="font-sans text-[11px] text-slate-400">
+                    {isJa ? 'Route A (陸地回避・最短距離)' : 'Route A (Land-Safe Shortest)'}
+                  </div>
+                  <div className="mt-0.5 text-slate-200">
+                    {estimateA.distanceKm.toFixed(1)} km · {estimateA.durationHours.toFixed(2)} h ·{' '}
+                    <span className="font-semibold text-slate-50">
+                      {estimateA.estimatedFuelLiters.toFixed(1)} L
+                    </span>{' '}
+                    <span className="text-slate-400">
+                      (¥{estimateA.estimatedFuelCostYen.toLocaleString()})
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="font-sans text-[11px] text-cyan-300">
+                    {isJa ? 'Route B (風・波・海流配慮 / 燃費最適)' : 'Route B (Wind/Wave/Current Optimal)'}
+                  </div>
+                  <div className="mt-0.5 text-cyan-100">
+                    {estimateB.distanceKm.toFixed(1)} km · {estimateB.durationHours.toFixed(2)} h ·{' '}
+                    <span className="font-semibold text-cyan-300">
+                      {estimateB.estimatedFuelLiters.toFixed(1)} L
+                    </span>{' '}
+                    <span className="text-cyan-200/70">
+                      (¥{estimateB.estimatedFuelCostYen.toLocaleString()})
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="font-sans text-[11px] text-slate-400">
+                    {isJa
+                      ? `燃料差 (${vessel.fuelType === 'gasoline' ? 'ガソリン' : '軽油/A重油'} · B − A)`
+                      : `Fuel Delta (${vessel.fuelType === 'gasoline' ? 'Gasoline' : 'Marine Diesel'} · B − A)`}
+                  </div>
+                  <div
+                    className={`mt-0.5 font-semibold ${
+                      estimateB.estimatedFuelLiters - estimateA.estimatedFuelLiters < 0
+                        ? 'text-emerald-400'
+                        : 'text-amber-300'
+                    }`}
+                  >
+                    {estimateB.estimatedFuelLiters - estimateA.estimatedFuelLiters >= 0 ? '+' : ''}
+                    {(estimateB.estimatedFuelLiters - estimateA.estimatedFuelLiters).toFixed(1)} L (
+                    {estimateB.estimatedFuelCostYen - estimateA.estimatedFuelCostYen >= 0 ? '+' : ''}
+                    {isJa
+                      ? `${(estimateB.estimatedFuelCostYen - estimateA.estimatedFuelCostYen).toLocaleString()} 円`
+                      : `¥${(estimateB.estimatedFuelCostYen - estimateA.estimatedFuelCostYen).toLocaleString()}`}
+                    )
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-2 text-[11px] text-slate-500">
+                {isJa
+                  ? '※ Experimental estimation — not for navigation（陸地回避 A* による試算比較であり、水深・浅瀬・定置網非考慮のため実航海判断には使用不可）'
+                  : '※ Experimental estimation — not for navigation (Land-avoiding A* comparative simulation; excludes bathymetry/hazards)'}
+              </div>
+            </div>
+          )}
+
           {/* Candidate Hotspot Breakdown Cards (Single elevation, clean grid) */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {hotspots.map((spot) => {
+            {hotspots.map((spot, idx) => {
               const isSelected = spot.id === selectedHotspot?.id;
+              const char = ['A', 'B', 'C'][idx] ?? String(idx + 1);
               return (
                 <button
                   key={spot.id}
@@ -743,17 +1134,17 @@ export function OceanMapView({
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-xs font-semibold text-slate-100">
-                      {hotspotText.shortLabel(spot)}
+                      {char}. {isJa ? spot.shortTitleJa : spot.shortTitleEn}
                     </span>
                     <span className="font-mono text-sm font-semibold text-cyan-300 tabular-nums">
-                      {t('hotspot.indexShort')} {spot.habitatScore}
+                      {isJa ? `指数 ${spot.habitatScore}` : `Score ${spot.habitatScore}`}
                     </span>
                   </div>
                   <div className="mt-1 font-mono text-[11px] text-slate-400 tabular-nums">
-                    {spot.lat.toFixed(2)}°N, {spot.lon.toFixed(2)}°E · {spot.sst.toFixed(1)}°C · {spot.chlorA.toFixed(2)} mg/m³
+                    {spot.lat.toFixed(2)}°N, {formatLon(spot.lon, 2)} · {spot.sst.toFixed(1)}°C · {spot.chlorA.toFixed(2)} mg/m³
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-slate-400 line-clamp-2">
-                    {hotspotText.rationale(spot.rationale)}
+                    {isJa ? spot.rationaleJa : spot.rationaleEn}
                   </p>
                 </button>
               );

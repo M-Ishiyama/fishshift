@@ -1,6 +1,6 @@
 {
   "name": "FishShift — Ocean Trend & Fuel-Aware Fishing Intelligence",
-  "description": "A marine decision-support prototype combining satellite ocean observations (SST / Chl-a), OBIS occurrence records and sea-state forecasts to visualise long-term ocean trends and fuel-aware route comparisons.",
+  "description": "衛星海洋観測（SST / Chl-a）・OBIS魚種出現履歴・海況予報を統合し、海洋トレンド解析と省燃料航路比較を可視化する水産・海洋意思決定プロトタイプ",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
