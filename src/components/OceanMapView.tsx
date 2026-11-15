@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Compass, Layers, Navigation, ArrowRight } from 'lucide-react';
-import { REGIONS, SPECIES_LIST } from '../data/oceanData';
+import { GRID_COLS, GRID_ROWS, PROVENANCE, REGIONS, SPECIES_LIST } from '../data/oceanData';
+import { useT } from '../i18n/I18nProvider';
+import { useFormat } from '../i18n/format';
+import { useHotspotText, useName, useNasaSource, useRegionText } from '../i18n/render';
 import type {
   FishOccurrence,
   HotspotCandidate,
@@ -38,12 +41,11 @@ interface OceanMapViewProps {
   onGoToRouteLab: () => void;
 }
 
-const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
 function sstToColor(sst: number | null): string {
   if (sst === null) return 'transparent';
-  // Scale 4°C -> 24°C
-  const t = Math.max(0, Math.min(1, (sst - 4) / 20));
+  // Scale 0°C -> 30°C, covering the observed range of the prefetched NASA SST.
+  const t = Math.max(0, Math.min(1, sst / 30));
   if (t < 0.35) {
     const k = t / 0.35;
     return `rgb(${Math.round(14 + k * 8)}, ${Math.round(45 + k * 85)}, ${Math.round(120 + k * 75)})`;
@@ -105,14 +107,20 @@ export function OceanMapView({
   routeB,
   onGoToRouteLab,
 }: OceanMapViewProps) {
+  const t = useT();
+  const fmt = useFormat();
+  const name = useName();
+  const regionText = useRegionText();
+  const hotspotText = useHotspotText();
+  const nasaSource = useNasaSource();
   const region = REGIONS[regionId];
   const species = SPECIES_LIST[speciesId];
   const [hoveredCell, setHoveredCell] = useState<OceanGridCell | null>(null);
 
   const svgWidth = 780;
   const svgHeight = 520;
-  const rows = 20;
-  const cols = 26;
+  const rows = GRID_ROWS;
+  const cols = GRID_COLS;
   const cellW = svgWidth / cols;
   const cellH = svgHeight / rows;
 
@@ -152,33 +160,37 @@ export function OceanMapView({
   const legendMeta = useMemo(() => {
     if (layer === 'sst') {
       return {
-        title: '海面水温 SST (°C)',
-        min: '4.0°C',
-        mid: '14.0°C',
-        max: '24.0°C',
+        title: t('map.legend.sst.title'),
+        min: '0.0°C',
+        mid: '15.0°C',
+        max: '30.0°C',
         gradient: 'linear-gradient(90deg, rgb(14,45,120), rgb(22,130,195), rgb(167,195,100), rgb(245,90,35))',
-        source: 'NASA Earthdata SST プロダクト参照モデル',
+        source: t('map.legend.observed', {
+          source: nasaSource(PROVENANCE.sst, { withDataset: true }),
+        }),
       };
     }
     if (layer === 'chlor_a') {
       return {
-        title: 'クロロフィルa濃度 (mg/m³)',
+        title: t('map.legend.chlorA.title'),
         min: '0.1',
         mid: '0.8',
         max: '3.5+',
         gradient: 'linear-gradient(90deg, rgb(10,35,80), rgb(18,130,135), rgb(113,218,85))',
-        source: 'NASA OB.DAAC / Ocean Color 基礎生産プロキシ',
+        source: t('map.legend.observed', {
+          source: nasaSource(PROVENANCE.chlorA, { withDataset: true }),
+        }),
       };
     }
     return {
-      title: '探索用環境適合指数 (0–100)',
+      title: t('map.legend.habitat.title'),
       min: '0',
       mid: '50',
       max: '100',
       gradient: 'linear-gradient(90deg, rgb(13,25,48), rgb(19,100,130), rgb(54,218,225))',
-      source: '探索用合成指数 (0.40×水温 + 0.35×Chl-a + 0.25×OBIS)',
+      source: t('map.legend.habitatSource'),
     };
-  }, [layer]);
+  }, [layer, nasaSource, t]);
 
   const latTicks = useMemo(() => {
     const step = (region.bbox.north - region.bbox.south) / 4;
@@ -196,14 +208,14 @@ export function OceanMapView({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-slate-50">
-            海洋環境・餌場予測探索マップ
+            {t('map.heading')}
           </h1>
           <p className="mt-0.5 text-xs text-slate-400">
-            <span>表示モード: 事前キャッシュ・シミュレーション</span>
+            <span>{t('map.subtitle.data')}</span>
             <span className="mx-2 text-slate-600">·</span>
-            <span>対象海域: {region.nameJa}</span>
+            <span>{t('map.subtitle.region', { region: name(region) })}</span>
             <span className="mx-2 text-slate-600">·</span>
-            <span>OBIS出現点は過去の報告記録であり現在の魚群位置ではありません</span>
+            <span>{t('map.subtitle.obisCaveat')}</span>
           </p>
         </div>
 
@@ -213,7 +225,7 @@ export function OceanMapView({
           className="inline-flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-medium text-cyan-300 hover:bg-cyan-500/20 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Navigation className="h-3.5 w-3.5" />
-          <span>選択ポイントへ省燃料ルート試算</span>
+          <span>{t('map.cta.routeLab')}</span>
           <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -225,7 +237,7 @@ export function OceanMapView({
           {/* Region Selector */}
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-2">
-              対象海域（プリセット）
+              {t('map.control.region')}
             </label>
             <div className="grid grid-cols-1 gap-1.5">
               {(Object.keys(REGIONS) as RegionId[]).map((id) => {
@@ -242,7 +254,7 @@ export function OceanMapView({
                         : 'border-slate-800 bg-[#070B12]/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                     }`}
                   >
-                    <div className="font-semibold">{r.nameJa}</div>
+                    <div className="font-semibold">{name(r)}</div>
                     <div className="mt-0.5 font-mono text-[11px] text-slate-500 tabular-nums">
                       {r.bbox.south}–{r.bbox.north}°N · {r.bbox.west}–{r.bbox.east}°E
                     </div>
@@ -255,7 +267,7 @@ export function OceanMapView({
           {/* Species Selector */}
           <div>
             <label htmlFor="species-select" className="block text-xs font-medium text-slate-400 mb-2">
-              対象魚種（OBIS学名基準）
+              {t('map.control.species')}
             </label>
             <select
               id="species-select"
@@ -267,13 +279,13 @@ export function OceanMapView({
                 const sp = SPECIES_LIST[id];
                 return (
                   <option key={id} value={id}>
-                    {sp.nameJa} ({sp.scientificName})
+                    {name(sp)} ({sp.scientificName})
                   </option>
                 );
               })}
             </select>
             <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
-              {species.forageNoteJa}
+              {t(species.forageNoteKey)}
             </p>
           </div>
 
@@ -281,14 +293,14 @@ export function OceanMapView({
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-400">
               <Layers className="h-3.5 w-3.5" />
-              <span>衛星・解析ベースレイヤー</span>
+              <span>{t('map.control.baseLayer')}</span>
             </div>
             <div className="grid grid-cols-3 gap-1 rounded-md bg-[#070B12] p-1 border border-slate-800">
               {(
                 [
-                  { id: 'sst', label: '海面水温' },
+                  { id: 'sst', label: t('map.layer.sst') },
                   { id: 'chlor_a', label: 'Chl-a' },
-                  { id: 'habitat', label: '適合指数' },
+                  { id: 'habitat', label: t('map.layer.habitat') },
                 ] as { id: MapLayer; label: string }[]
               ).map((item) => (
                 <button
@@ -310,14 +322,14 @@ export function OceanMapView({
           {/* Time Scrubber */}
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs">
-              <span className="font-medium text-slate-400">観測年月スライダー</span>
+              <span className="font-medium text-slate-400">{t('map.control.timeSlider')}</span>
               <span className="font-mono font-semibold text-cyan-300 tabular-nums">
-                {year}年 {MONTH_NAMES[month - 1]}
+                {fmt.yearMonth(year, month)}
               </span>
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <span className="w-8 font-mono text-[11px] text-slate-500">年</span>
+                <span className="w-12 shrink-0 font-mono text-[11px] text-slate-500">{t('map.slider.year')}</span>
                 <input
                   type="range"
                   min={2016}
@@ -328,7 +340,7 @@ export function OceanMapView({
                 />
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-8 font-mono text-[11px] text-slate-500">月</span>
+                <span className="w-12 shrink-0 font-mono text-[11px] text-slate-500">{t('map.slider.month')}</span>
                 <input
                   type="range"
                   min={1}
@@ -345,11 +357,13 @@ export function OceanMapView({
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-400">
               <Compass className="h-3.5 w-3.5" />
-              <span>重ね合わせレイヤー</span>
+              <span>{t('map.control.overlays')}</span>
             </div>
             <div className="space-y-2 text-xs">
               <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
-                <span className="text-slate-300">OBIS 過去出現記録 ({occurrences.length}点)</span>
+                <span className="text-slate-300">
+                  {t('map.overlay.obis', { count: fmt.integer(occurrences.length) })}
+                </span>
                 <input
                   type="checkbox"
                   checked={showObis}
@@ -357,8 +371,13 @@ export function OceanMapView({
                   className="h-4 w-4 accent-amber-400"
                 />
               </label>
+              {showObis && occurrences.length === 0 && (
+                <p className="px-3 text-[11px] leading-snug text-amber-300/80">
+                  {t('map.overlay.obisEmpty')}
+                </p>
+              )}
               <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
-                <span className="text-slate-300">海流ベクトル (流速・流向)</span>
+                <span className="text-slate-300">{t('map.overlay.currents')}</span>
                 <input
                   type="checkbox"
                   checked={showCurrents}
@@ -367,7 +386,7 @@ export function OceanMapView({
                 />
               </label>
               <label className="flex items-center justify-between rounded-md border border-slate-800/80 bg-[#070B12]/50 px-3 py-2 cursor-pointer hover:border-slate-700">
-                <span className="text-slate-300">比較航路サンプル線 (A/B)</span>
+                <span className="text-slate-300">{t('map.overlay.routes')}</span>
                 <input
                   type="checkbox"
                   checked={showRoutes}
@@ -380,7 +399,7 @@ export function OceanMapView({
 
           {/* Disclaimer */}
           <p className="mt-auto border-t border-slate-800 pt-3 text-[11px] leading-relaxed text-slate-500">
-            欠損（雲域等）は透明ハッチで区別表示し、0として補間していません。適合指数は未検証の探索用モデル値です。
+            {t('map.disclaimer')}
           </p>
         </aside>
 
@@ -402,7 +421,7 @@ export function OceanMapView({
                 <span>{legendMeta.mid}</span>
                 <span>→</span>
                 <span>{legendMeta.max}</span>
-                <span className="ml-2 text-slate-500">□ 欠損(雲)</span>
+                <span className="ml-2 text-slate-500">{t('map.legend.missing')}</span>
               </div>
             </div>
 
@@ -624,7 +643,7 @@ export function OceanMapView({
                             fontSize="11"
                             fontWeight="600"
                           >
-                            {region.defaultPort.nameJa}
+                            {regionText.portName(region)}
                           </text>
                         </g>
                       );
@@ -633,10 +652,9 @@ export function OceanMapView({
                 )}
 
                 {/* Candidate Fishing / Forage Hotspots */}
-                {hotspots.map((spot, idx) => {
+                {hotspots.map((spot) => {
                   const { x, y } = project({ lat: spot.lat, lon: spot.lon });
                   const isSelected = spot.id === selectedHotspot?.id;
-                  const labelChar = ['A', 'B', 'C'][idx] ?? String(idx + 1);
                   return (
                     <g
                       key={spot.id}
@@ -660,7 +678,7 @@ export function OceanMapView({
                         fontWeight="700"
                         fontFamily="JetBrains Mono, monospace"
                       >
-                        {labelChar}
+                        {spot.letter}
                       </text>
                     </g>
                   );
@@ -675,18 +693,18 @@ export function OceanMapView({
                       {hoveredCell.lat.toFixed(2)}°N, {hoveredCell.lon.toFixed(2)}°E
                     </div>
                     <div>
-                      SST: {hoveredCell.sst !== null ? `${hoveredCell.sst.toFixed(1)} °C` : '欠損(雲)'}
+                      SST: {hoveredCell.sst !== null ? `${fmt.number(hoveredCell.sst, 1)} °C` : t('map.probe.missingCloud')}
                       <span className="mx-1.5 text-slate-600">|</span>
-                      Chl: {hoveredCell.chlorA !== null ? `${hoveredCell.chlorA.toFixed(2)} mg/m³` : '欠損'}
+                      Chl: {hoveredCell.chlorA !== null ? `${fmt.number(hoveredCell.chlorA, 2)} mg/m³` : t('map.probe.missing')}
                     </div>
                     <div>
-                      海流: {hoveredCell.currentSpeedMs.toFixed(2)} m/s ({hoveredCell.currentDirDeg}°)
+                      {t('map.probe.current')}: {fmt.number(hoveredCell.currentSpeedMs, 2)} m/s ({hoveredCell.currentDirDeg}°)
                       <span className="mx-1.5 text-slate-600">|</span>
-                      波高: {hoveredCell.waveHeightM.toFixed(1)} m
+                      {t('map.probe.wave')}: {fmt.number(hoveredCell.waveHeightM, 1)} m
                     </div>
                   </div>
                 ) : (
-                  <div className="text-slate-400">マップ上でカーソル移動すると詳細値を計測</div>
+                  <div className="text-slate-400">{t('map.probe.hint')}</div>
                 )}
               </div>
 
@@ -694,15 +712,15 @@ export function OceanMapView({
               <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap items-center gap-4 rounded border border-slate-800 bg-[#070B12]/85 px-3 py-1.5 text-[11px] text-slate-300">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  OBIS過去記録
+                  {t('map.key.obis')}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-slate-200" />
-                  Route A (最短)
+                  {t('map.key.routeA')}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-0.5 w-4 bg-cyan-400" />
-                  Route B (海況配慮)
+                  {t('map.key.routeB')}
                 </span>
               </div>
             </div>
@@ -710,9 +728,8 @@ export function OceanMapView({
 
           {/* Candidate Hotspot Breakdown Cards (Single elevation, clean grid) */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {hotspots.map((spot, idx) => {
+            {hotspots.map((spot) => {
               const isSelected = spot.id === selectedHotspot?.id;
-              const char = ['A', 'B', 'C'][idx] ?? String(idx + 1);
               return (
                 <button
                   key={spot.id}
@@ -726,17 +743,17 @@ export function OceanMapView({
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-xs font-semibold text-slate-100">
-                      {char}. {spot.labelJa.replace(/候補ポイント [A-C]（|）/g, '')}
+                      {hotspotText.shortLabel(spot)}
                     </span>
                     <span className="font-mono text-sm font-semibold text-cyan-300 tabular-nums">
-                      指数 {spot.habitatScore}
+                      {t('hotspot.indexShort')} {spot.habitatScore}
                     </span>
                   </div>
                   <div className="mt-1 font-mono text-[11px] text-slate-400 tabular-nums">
                     {spot.lat.toFixed(2)}°N, {spot.lon.toFixed(2)}°E · {spot.sst.toFixed(1)}°C · {spot.chlorA.toFixed(2)} mg/m³
                   </div>
                   <p className="mt-2 text-[11px] leading-relaxed text-slate-400 line-clamp-2">
-                    {spot.rationaleJa}
+                    {hotspotText.rationale(spot.rationale)}
                   </p>
                 </button>
               );

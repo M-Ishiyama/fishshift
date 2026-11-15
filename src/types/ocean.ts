@@ -18,18 +18,29 @@ export interface PointLatLon {
   lon: number;
 }
 
+/**
+ * Dictionary keys for text that has no English twin in the data itself.
+ * Declared as template-literal types so this module stays independent of i18n.
+ */
+export type RegionDescriptionKey = `region.${RegionId}.description`;
+export type RegionShortNameKey = `region.${RegionId}.shortName`;
+export type PortNameKey = `region.${RegionId}.port`;
+export type ForageNoteKey = `species.${SpeciesId}.forageNote`;
+
 export interface Region {
   id: RegionId;
   nameJa: string;
   nameEn: string;
+  /** Abbreviated form for narrow toggle buttons. */
+  shortNameKey: RegionShortNameKey;
   bbox: BBox;
   defaultPort: {
-    nameJa: string;
+    nameKey: PortNameKey;
     lat: number;
     lon: number;
   };
   landPolygons: PointLatLon[][];
-  descriptionJa: string;
+  descriptionKey: RegionDescriptionKey;
 }
 
 export interface SpeciesInfo {
@@ -39,7 +50,8 @@ export interface SpeciesInfo {
   nameEn: string;
   optimalSstRange: [number, number]; // degC (exploratory reference)
   optimalChlRange: [number, number]; // mg/m3 (exploratory reference)
-  forageNoteJa: string;
+  forageNoteKey: ForageNoteKey;
+  // Measured OBIS record counts (all-time, per region). Real coverage is sparse.
   obisCountTsugaru: number;
   obisCountSanriku: number;
 }
@@ -75,9 +87,29 @@ export interface FishOccurrence {
   datasetId: string;
 }
 
+export type HotspotDescriptorKey =
+  | 'hotspot.descriptor.primaryFront'
+  | 'hotspot.descriptor.planktonFront'
+  | 'hotspot.descriptor.offshoreReference'
+  | 'hotspot.descriptor.generic';
+
+/**
+ * Inputs for the "why this point" sentence, kept as numbers so the wording and
+ * the number formatting are both decided by the active locale at render time.
+ */
+export interface HotspotRationale {
+  speciesId: SpeciesId;
+  optimalSstLow: number;
+  optimalSstHigh: number;
+  sst: number;
+  chlorA: number;
+}
+
 export interface HotspotCandidate {
   id: string;
-  labelJa: string;
+  /** Display letter (A/B/C), kept separate from its descriptor so neither has to be parsed back out. */
+  letter: string;
+  descriptorKey: HotspotDescriptorKey;
   lat: number;
   lon: number;
   sst: number;
@@ -88,7 +120,7 @@ export interface HotspotCandidate {
   obisContext: number;
   currentSpeedMs: number;
   waveHeightM: number;
-  rationaleJa: string;
+  rationale: HotspotRationale;
 }
 
 export interface MonthlyObservation {
@@ -98,6 +130,31 @@ export interface MonthlyObservation {
   sst: number | null;
   chlorA: number | null;
   coverageRatio: number; // 0..1 valid pixels
+}
+
+/** Whether a displayed value is a real observation or a parametric estimate. */
+export type DataKind = 'observed' | 'estimated';
+
+/** Acquisition trail for a prefetched product (design doc 6.3). */
+export interface Provenance {
+  dataset_id: string;
+  provider: string;
+  product_name: string;
+  /** NASA product name, shown first so the producer is unambiguous. */
+  nasa_short_name?: string;
+  /** NASA platform/sensor behind the product. */
+  nasa_platform?: string;
+  /** Redistribution path (a mirror; not the data's producer). */
+  distribution?: string;
+  variable: string;
+  unit: string;
+  source_url: string;
+  observation_start: string;
+  observation_end: string;
+  retrieved_at_utc: string;
+  processing: string;
+  license_note: string;
+  data_kind: DataKind;
 }
 
 export type TrendStatus = 'SIGNIFICANT' | 'NOT SIGNIFICANT' | 'INSUFFICIENT DATA';
@@ -136,9 +193,24 @@ export interface RouteWaypointMetric {
   effectiveSpeedKnots: number;
 }
 
+export type RouteLabelKey = 'route.a.label' | 'route.b.label';
+
+export type CautionKind = 'calm' | 'roughSeas' | 'favorableCurrent' | 'adverseCurrent';
+
+/**
+ * Which caution applies, plus the numbers it cites. The sentence itself lives in
+ * the dictionaries, so the math layer never builds display text.
+ */
+export interface CautionNote {
+  kind: CautionKind;
+  maxWaveM: number;
+  avgWindMs: number;
+  avgAssistKnots: number;
+}
+
 export interface RouteEstimate {
   routeId: 'A' | 'B';
-  labelJa: string;
+  labelKey: RouteLabelKey;
   strategyEn: string;
   points: PointLatLon[];
   waypoints: RouteWaypointMetric[];
@@ -150,5 +222,5 @@ export interface RouteEstimate {
   maxWaveHeightM: number;
   avgWindSpeedMs: number;
   avgCurrentAssistKnots: number;
-  cautionNoteJa: string;
+  caution: CautionNote;
 }

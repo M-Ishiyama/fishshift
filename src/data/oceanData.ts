@@ -1,24 +1,83 @@
 import type {
   FishOccurrence,
   HotspotCandidate,
+  HotspotDescriptorKey,
   MonthlyObservation,
   OceanGridCell,
   PointLatLon,
+  Provenance,
   Region,
   RegionId,
   SpeciesId,
   SpeciesInfo,
 } from '../types/ocean';
+import monthlySeriesJson from './nasa/monthly_series.json';
+import obisJson from './nasa/obis_occurrences.json';
+import provenanceJson from './nasa/provenance.json';
+import sanrikuGridJson from './nasa/sanriku_grid.json';
+import tsugaruGridJson from './nasa/tsugaru_grid.json';
+
+/**
+ * Grid shape of the prefetched NASA products. The batch in scripts/prepare_nasa.mjs
+ * writes this shape, so it is the single source of truth for every consumer.
+ */
+export const GRID_ROWS = tsugaruGridJson.rows;
+export const GRID_COLS = tsugaruGridJson.cols;
+
+interface MonthGrid {
+  sst: (number | null)[] | null;
+  chlorA: (number | null)[] | null;
+}
+
+const GRIDS: Record<RegionId, { months: Record<string, MonthGrid> }> = {
+  tsugaru: tsugaruGridJson as unknown as { months: Record<string, MonthGrid> },
+  sanriku: sanrikuGridJson as unknown as { months: Record<string, MonthGrid> },
+};
+
+/** Acquisition trail for every prefetched product, surfaced in the UI as the data source. */
+export const PROVENANCE = provenanceJson as unknown as {
+  sst: Provenance;
+  chlorA: Provenance;
+  obis: Provenance & { record_counts: Record<string, number> };
+  estimated_fields: { fields: string[]; data_kind: 'estimated'; note: string };
+};
+
+export const DATA_PERIOD = {
+  start: provenanceJson.sst.observation_start,
+  end: provenanceJson.sst.observation_end,
+};
+
+/** The parts of a NASA source credit, assembled into a sentence by the i18n layer. */
+export interface NasaSourceRef {
+  lead: string;
+  distribution: string | null;
+  datasetId: string | null;
+}
+
+/**
+ * Builds the source credit for a NASA product.
+ *
+ * NASA produced the data; ERDDAP only redistributes it, so the NASA product name
+ * leads and the mirror follows as a footnote. Every view uses this one function so
+ * the attribution cannot drift between screens.
+ */
+export function nasaSourceRef(p: Provenance, opts?: { withDataset?: boolean }): NasaSourceRef {
+  return {
+    lead: p.nasa_short_name ?? p.product_name,
+    distribution: p.distribution ?? null,
+    datasetId: opts?.withDataset ? p.dataset_id : null,
+  };
+}
 
 export const REGIONS: Record<RegionId, Region> = {
   tsugaru: {
     id: 'tsugaru',
     nameJa: '北海道南部・津軽海峡',
     nameEn: 'Hokkaido South / Tsugaru Strait',
+    shortNameKey: 'region.tsugaru.shortName',
     bbox: { west: 139.5, south: 40.5, east: 143.0, north: 43.0 },
-    defaultPort: { nameJa: '函館沖 仮想出港点', lat: 41.68, lon: 140.66 },
-    descriptionJa:
-      '対馬暖流系の津軽暖流と親潮系冷水が交差する実験対象海域（設計書サンプルBBox: 40.5–43.0°N, 139.5–143.0°E）。',
+    defaultPort: { nameKey: 'region.tsugaru.port', lat: 41.68, lon: 140.66 },
+    descriptionKey: 'region.tsugaru.description',
     landPolygons: [
       // Southern Hokkaido (Oshima Peninsula & Hidaka coast)
       [
@@ -58,10 +117,10 @@ export const REGIONS: Record<RegionId, Region> = {
     id: 'sanriku',
     nameJa: '三陸沖・黒潮親潮混合域',
     nameEn: 'Sanriku / Kuroshio-Oyashio Confluence',
+    shortNameKey: 'region.sanriku.shortName',
     bbox: { west: 141.5, south: 37.5, east: 145.5, north: 40.5 },
-    defaultPort: { nameJa: '気仙沼沖 仮想出港点', lat: 38.85, lon: 141.72 },
-    descriptionJa:
-      '暖水塊（黒潮続流）と寒流（親潮）が衝突し、明瞭な潮目と植物プランクトン増殖帯が形成される比較海域。',
+    defaultPort: { nameKey: 'region.sanriku.port', lat: 38.85, lon: 141.72 },
+    descriptionKey: 'region.sanriku.description',
     landPolygons: [
       // Sanriku Coast (Iwate / Miyagi)
       [
@@ -88,9 +147,9 @@ export const SPECIES_LIST: Record<SpeciesId, SpeciesInfo> = {
     nameEn: 'Pacific Bluefin Tuna',
     optimalSstRange: [15.0, 21.5],
     optimalChlRange: [0.35, 1.4],
-    forageNoteJa: '潮目周辺のイワシ・スルメイカ等の餌生物（高次捕食対象）が集まりやすい水温前線域に過去の回遊記録が集中。',
-    obisCountTsugaru: 148,
-    obisCountSanriku: 214,
+    forageNoteKey: 'species.thunnus_orientalis.forageNote',
+    obisCountTsugaru: 2,
+    obisCountSanriku: 9,
   },
   oncorhynchus_keta: {
     id: 'oncorhynchus_keta',
@@ -99,9 +158,9 @@ export const SPECIES_LIST: Record<SpeciesId, SpeciesInfo> = {
     nameEn: 'Chum Salmon',
     optimalSstRange: [7.5, 13.5],
     optimalChlRange: [0.6, 2.5],
-    forageNoteJa: '親潮系の冷水域と基礎生産が高い混合域に分布する傾向。高水温化による分布域の北上傾向の検証対象。',
-    obisCountTsugaru: 196,
-    obisCountSanriku: 112,
+    forageNoteKey: 'species.oncorhynchus_keta.forageNote',
+    obisCountTsugaru: 8,
+    obisCountSanriku: 1,
   },
   sardinops_melanostictus: {
     id: 'sardinops_melanostictus',
@@ -110,9 +169,9 @@ export const SPECIES_LIST: Record<SpeciesId, SpeciesInfo> = {
     nameEn: 'Japanese Sardine',
     optimalSstRange: [12.0, 18.5],
     optimalChlRange: [0.8, 3.8],
-    forageNoteJa: '植物プランクトン（Chl-a高濃度帯）を直接・間接的に利用する小型浮魚類。大型魚の餌密集ポイントの指標候補。',
-    obisCountTsugaru: 235,
-    obisCountSanriku: 318,
+    forageNoteKey: 'species.sardinops_melanostictus.forageNote',
+    obisCountTsugaru: 7,
+    obisCountSanriku: 0,
   },
 };
 
@@ -134,11 +193,6 @@ export function isPointOnLand(regionId: RegionId, pt: PointLatLon): boolean {
   return polys.some((poly) => pointInPolygon(pt, poly));
 }
 
-function deterministicHash(seed: number): number {
-  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
-
 function gaussianScore(val: number, min: number, max: number): number {
   const mid = (min + max) / 2;
   const halfWidth = Math.max(0.5, (max - min) / 2);
@@ -147,8 +201,15 @@ function gaussianScore(val: number, min: number, max: number): number {
 }
 
 /**
- * Generates an exploratory grid (20 rows x 26 cols) for a given region, year, month, and species.
- * Simulates realistic seasonal SST, Chl-a thermal fronts, ocean current fields, and satellite cloud gaps.
+ * Builds the ocean grid for a region/month from the prefetched NASA products.
+ *
+ * SST and Chl-a are real observations (see PROVENANCE). ERDDAP returns null both
+ * over land and under cloud, so land is decided by the region's own polygons and a
+ * sea cell with no value is treated as a satellite gap -- exactly the distinction the
+ * map already renders (hatched = gap, absent = land).
+ *
+ * Current, wave, wind remain parametric ESTIMATES: no NASA monthly product supplies
+ * them at this resolution. They are labelled as estimates wherever they are shown.
  */
 export function buildOceanGrid(
   regionId: RegionId,
@@ -158,20 +219,15 @@ export function buildOceanGrid(
 ): OceanGridCell[] {
   const region = REGIONS[regionId];
   const species = SPECIES_LIST[speciesId];
-  const rows = 20;
-  const cols = 26;
+  const rows = GRID_ROWS;
+  const cols = GRID_COLS;
   const dLat = (region.bbox.north - region.bbox.south) / rows;
   const dLon = (region.bbox.east - region.bbox.west) / cols;
 
-  // Seasonal cycle: peak SST in Aug/Sep (month 8.5), minimum in Feb/Mar (month 2.5)
-  const seasonalSst = Math.sin(((month - 5.5) / 12) * Math.PI * 2);
-  // Long-term warming trend: +0.045 degC/yr (Tsugaru) or +0.058 degC/yr (Sanriku)
-  const yearOffset = year - 2016;
-  const warmingDelta = regionId === 'tsugaru' ? yearOffset * 0.048 : yearOffset * 0.062;
-
-  // Spring bloom (Apr-May) and autumn bloom (Oct) for Chl-a
-  const springBloom = Math.exp(-0.5 * ((month - 4.6) / 1.3) ** 2);
-  const autumnBloom = 0.65 * Math.exp(-0.5 * ((month - 10.2) / 1.2) ** 2);
+  const key = `${year}-${String(month).padStart(2, '0')}`;
+  const monthGrid = GRIDS[regionId].months[key];
+  const sstPlane = monthGrid?.sst ?? null;
+  const chlPlane = monthGrid?.chlorA ?? null;
 
   const cells: OceanGridCell[] = [];
 
@@ -205,83 +261,35 @@ export function buildOceanGrid(
         continue;
       }
 
-      // Cloud / satellite missing pixel simulation (~5% missing in winter/monsoon)
-      const missingNoise = deterministicHash(r * 131 + c * 37 + month * 17 + year * 7);
-      const isCloudGap = missingNoise < (month <= 2 || month === 7 ? 0.065 : 0.025);
+      const idx = r * cols + c;
+      const sst = sstPlane?.[idx] ?? null;
+      const chlorA = chlPlane?.[idx] ?? null;
 
-      let baseSst = 0;
-      let chl = 0;
-      let u = 0;
-      let v = 0;
-
-      if (regionId === 'tsugaru') {
-        // Warm Tsugaru current flowing west->east through strait (lat ~41.4-41.7, lon 140.0-141.6)
-        const straitCore = Math.exp(-0.5 * ((lat - 41.52) / 0.36) ** 2) * (lon < 142.2 ? 1 : 0.6);
-        const latGrad = (42.5 - lat) * 1.45;
-        const eddy = Math.sin(lat * 3.1 + lon * 2.4 + month * 0.4) * 0.7;
-        baseSst = 13.8 + seasonalSst * 7.2 + warmingDelta + straitCore * 2.8 + latGrad * 0.65 + eddy;
-
-        // Chl-a higher at cold/warm front (east of Shimokita & Esan) + coastal upwelling
-        const frontZone = Math.exp(-0.5 * (((lat - 41.65) / 0.55) ** 2 + ((lon - 141.85) / 0.7) ** 2));
-        const westFront = Math.exp(-0.5 * (((lat - 41.9) / 0.45) ** 2 + ((lon - 139.9) / 0.4) ** 2));
-        chl =
-          0.32 +
-          (springBloom * 2.1 + autumnBloom * 1.2) * (0.5 + 0.9 * frontZone + 0.6 * westFront) +
-          0.25 * deterministicHash(r * 19 + c * 41 + month);
-
-        // Current: strong eastward jet in strait, curving south-east offshore
-        u = 0.28 + 0.78 * straitCore;
-        v = -0.15 * Math.max(0, lon - 141.3) + 0.12 * Math.sin(lon * 2.1 + month * 0.3);
-      } else {
-        // Sanriku: sharp thermal front between warm Kuroshio branch (south/east) and cold Oyashio (north/west)
-        const frontLat = 39.0 + 0.35 * Math.sin((lon - 142.0) * 1.3 + month * 0.25);
-        const frontTransition = 1 / (1 + Math.exp((lat - frontLat) * 2.8));
-        const warmCoreEddy = Math.exp(-0.5 * (((lat - 39.4) / 0.4) ** 2 + ((lon - 143.6) / 0.6) ** 2));
-        baseSst =
-          12.2 +
-          seasonalSst * 6.8 +
-          warmingDelta +
-          frontTransition * 5.4 +
-          warmCoreEddy * 2.4 +
-          0.5 * Math.cos(lon * 2.5 + lat * 2.2);
-
-        const frontBand = Math.exp(-0.5 * ((lat - frontLat) / 0.38) ** 2);
-        const coastal = Math.exp(-0.5 * ((lon - 142.1) / 0.45) ** 2);
-        chl =
-          0.28 +
-          (springBloom * 2.6 + autumnBloom * 1.45) * (0.45 + 1.15 * frontBand + 0.7 * coastal) +
-          0.2 * deterministicHash(r * 23 + c * 53 + month);
-
-        u = 0.32 + 0.55 * frontBand * Math.cos(lat - 38.8);
-        v = -0.28 * (1 - frontTransition) + 0.35 * frontTransition;
-      }
-
-      const currentSpeedMs = Math.min(1.45, Math.sqrt(u * u + v * v));
-      const currentDirDeg = ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360;
-
-      // Wave height & wind speed higher offshore and in winter
-      const offshoreDist = regionId === 'tsugaru' ? Math.max(0, lon - 141.0) * 0.4 : Math.max(0, lon - 142.0) * 0.35;
+      // Estimated transport/sea-state fields (NOT observations). Offshore distance and
+      // a winter/summer monsoon split drive a coarse, deterministic approximation.
+      const offshoreDist =
+        regionId === 'tsugaru' ? Math.max(0, lon - 141.0) * 0.4 : Math.max(0, lon - 142.0) * 0.35;
       const winterFactor = month <= 3 || month >= 11 ? 0.85 : 0.25;
-      const waveHeightM = Number(
-        (
-          0.75 +
-          winterFactor +
-          offshoreDist * 0.65 +
-          0.45 * Math.sin(lat * 2.2 - lon * 1.4 + month)
-        ).toFixed(2)
-      );
-      const windSpeedMs = Number((5.2 + winterFactor * 4.2 + offshoreDist * 2.2 + (r % 3) * 0.4).toFixed(1));
+      const currentSpeedMs = Number((0.35 + offshoreDist * 0.5).toFixed(2));
+      const currentDirDeg = regionId === 'tsugaru' ? 75 : 40;
+      const waveHeightM = Number((0.75 + winterFactor + offshoreDist * 0.65).toFixed(2));
+      const windSpeedMs = Number((5.2 + winterFactor * 4.2 + offshoreDist * 2.2).toFixed(1));
       const windDirDeg = month >= 10 || month <= 3 ? 305 : 145; // NW winter monsoon / SE summer
 
-      // Historical OBIS density proxy along thermal front & species preference
-      const tempSuit = gaussianScore(baseSst, species.optimalSstRange[0], species.optimalSstRange[1]);
-      const chlCtx = gaussianScore(chl, species.optimalChlRange[0], species.optimalChlRange[1]);
+      // Species suitability from the observed fields (design doc 7.2 weights).
+      const tempSuit = sst === null ? 0 : gaussianScore(sst, species.optimalSstRange[0], species.optimalSstRange[1]);
+      const chlCtx = chlorA === null ? 0 : gaussianScore(chlorA, species.optimalChlRange[0], species.optimalChlRange[1]);
+      // Real OBIS coverage here is far too sparse to build a density field from
+      // (measured 0-9 records per species/region), so the habitat index's third term
+      // is derived from the environment only; occurrences are drawn as points, never
+      // interpolated into a heatmap.
       const obisCtx = Math.min(1, 0.55 * tempSuit + 0.45 * chlCtx);
 
-      // Exploratory Habitat Index (Design doc §7.2: 0.40 * T + 0.35 * C + 0.25 * H)
-      const habitatScore = isCloudGap
-        ? null
-        : Math.round(100 * (0.4 * tempSuit + 0.35 * chlCtx + 0.25 * obisCtx));
+      // Exploratory Habitat Index (Design doc 7.2: 0.40 * T + 0.35 * C + 0.25 * H)
+      const habitatScore =
+        sst === null || chlorA === null
+          ? null
+          : Math.round(100 * (0.4 * tempSuit + 0.35 * chlCtx + 0.25 * obisCtx));
 
       cells.push({
         row: r,
@@ -289,10 +297,10 @@ export function buildOceanGrid(
         lat: Number(lat.toFixed(3)),
         lon: Number(lon.toFixed(3)),
         isLand: false,
-        sst: isCloudGap ? null : Number(baseSst.toFixed(2)),
-        chlorA: isCloudGap ? null : Number(Math.max(0.08, chl).toFixed(2)),
-        currentSpeedMs: Number(currentSpeedMs.toFixed(2)),
-        currentDirDeg: Math.round(currentDirDeg),
+        sst,
+        chlorA,
+        currentSpeedMs,
+        currentDirDeg,
         waveHeightM,
         windSpeedMs,
         windDirDeg,
@@ -307,6 +315,15 @@ export function buildOceanGrid(
 
   return cells;
 }
+
+const LETTERS = ['A', 'B', 'C'];
+
+/** Ranked slots: strongest front first, then the plankton front, then an offshore control. */
+const DESCRIPTOR_KEYS: HotspotDescriptorKey[] = [
+  'hotspot.descriptor.primaryFront',
+  'hotspot.descriptor.planktonFront',
+  'hotspot.descriptor.offshoreReference',
+];
 
 export function extractHotspots(grid: OceanGridCell[], speciesId: SpeciesId): HotspotCandidate[] {
   const species = SPECIES_LIST[speciesId];
@@ -323,10 +340,10 @@ export function extractHotspots(grid: OceanGridCell[], speciesId: SpeciesId): Ho
     if (picked.length >= 3) break;
   }
 
-  const labels = ['候補ポイント A（最有力潮目）', '候補ポイント B（プランクトン前線）', '候補ポイント C（沖合比較点）'];
   return picked.map((c, idx) => ({
     id: `hotspot-${idx + 1}`,
-    labelJa: labels[idx] ?? `候補ポイント ${idx + 1}`,
+    letter: LETTERS[idx] ?? String(idx + 1),
+    descriptorKey: DESCRIPTOR_KEYS[idx] ?? 'hotspot.descriptor.generic',
     lat: c.lat,
     lon: c.lon,
     sst: c.sst ?? 0,
@@ -337,92 +354,40 @@ export function extractHotspots(grid: OceanGridCell[], speciesId: SpeciesId): Ho
     obisContext: c.obisContext,
     currentSpeedMs: c.currentSpeedMs,
     waveHeightM: c.waveHeightM,
-    rationaleJa: `${species.nameJa}の参照適温帯（${species.optimalSstRange[0]}–${species.optimalSstRange[1]}°C）に対し実測モデル値 ${c.sst?.toFixed(1)}°C、Chl-a ${c.chlorA?.toFixed(2)} mg/m³ が重なる境界域。`,
+    rationale: {
+      speciesId,
+      optimalSstLow: species.optimalSstRange[0],
+      optimalSstHigh: species.optimalSstRange[1],
+      sst: c.sst ?? 0,
+      chlorA: c.chlorA ?? 0,
+    },
   }));
 }
 
-export function buildObisOccurrences(
-  regionId: RegionId,
-  speciesId: SpeciesId,
-  grid: OceanGridCell[]
-): FishOccurrence[] {
-  const seaCells = grid.filter((c) => !c.isLand && c.habitatScore !== null);
-  const weighted = [...seaCells].sort((a, b) => (b.obisDensity ?? 0) - (a.obisDensity ?? 0));
-  const pool = weighted.slice(0, Math.min(85, weighted.length));
-
-  const occurrences: FishOccurrence[] = [];
-  const basisOptions: FishOccurrence['basisOfRecord'][] = [
-    'HumanObservation',
-    'MachineObservation',
-    'Occurrence',
-  ];
-
-  for (let i = 0; i < 42; i++) {
-    const cell = pool[(i * 7) % pool.length];
-    if (!cell) continue;
-    const jitterLat = (deterministicHash(i * 31 + speciesId.length) - 0.5) * 0.11;
-    const jitterLon = (deterministicHash(i * 47 + regionId.length) - 0.5) * 0.12;
-    const pt = { lat: cell.lat + jitterLat, lon: cell.lon + jitterLon };
-    if (isPointOnLand(regionId, pt)) continue;
-
-    const year = 2015 + (i % 10);
-    const month = String(1 + ((i * 3) % 12)).padStart(2, '0');
-    const day = String(5 + ((i * 5) % 23)).padStart(2, '0');
-
-    occurrences.push({
-      id: `obis-${regionId}-${speciesId}-${i}`,
-      speciesId,
-      regionId,
-      lat: Number(pt.lat.toFixed(3)),
-      lon: Number(pt.lon.toFixed(3)),
-      observedAt: `${year}-${month}-${day}`,
-      basisOfRecord: basisOptions[i % basisOptions.length],
-      datasetId: regionId === 'tsugaru' ? 'OBIS-JP-NORTH-2025' : 'OBIS-SANRIKU-MIX-2025',
-    });
-  }
-
-  return occurrences;
-}
+const OBIS_RECORDS = obisJson as unknown as FishOccurrence[];
 
 /**
- * Generates 10-year monthly time series (2016-01 to 2025-12) for Trend Explorer.
- * Tsugaru SST shows statistically significant warming (+0.052 degC/yr, p < 0.05),
- * while Chl-a shows high interannual/seasonal variance (typically NOT SIGNIFICANT over 10y).
+ * Real OBIS occurrence records for the region/species, straight from the prefetch.
+ *
+ * Coverage is genuinely sparse (0-9 records per pair; some pairs are empty). Nothing
+ * is padded or jittered to fill the map -- an empty result is a real finding and the
+ * map says so.
+ */
+export function buildObisOccurrences(regionId: RegionId, speciesId: SpeciesId): FishOccurrence[] {
+  return OBIS_RECORDS.filter((o) => o.regionId === regionId && o.speciesId === speciesId);
+}
+
+const MONTHLY_SERIES = monthlySeriesJson as unknown as Record<RegionId, MonthlyObservation[]>;
+
+/**
+ * Observed monthly regional series for the Trend Explorer.
+ *
+ * Values are NASA observations aggregated per month; coverageRatio is the measured
+ * valid-pixel fraction. No trend is assumed here -- whatever slope and p-value the
+ * statistics produce from these numbers is the result.
  */
 export function buildMonthlyTimeSeries(regionId: RegionId): MonthlyObservation[] {
-  const rows: MonthlyObservation[] = [];
-  const baseSst = regionId === 'tsugaru' ? 13.4 : 15.8;
-  const slopeSst = regionId === 'tsugaru' ? 0.054 : 0.068;
-  const baseChl = regionId === 'tsugaru' ? 0.72 : 0.94;
-  const slopeChl = regionId === 'tsugaru' ? -0.004 : -0.008;
-
-  for (let year = 2016; year <= 2025; year++) {
-    for (let month = 1; month <= 12; month++) {
-      const t = year - 2016 + (month - 1) / 12;
-      const seasonalSst = 6.9 * Math.sin(((month - 5.5) / 12) * Math.PI * 2);
-      const noiseSst = (deterministicHash(year * 100 + month * 13 + regionId.length) - 0.5) * 0.75;
-
-      const spring = 0.78 * Math.exp(-0.5 * ((month - 4.5) / 1.2) ** 2);
-      const autumn = 0.42 * Math.exp(-0.5 * ((month - 10.2) / 1.1) ** 2);
-      const noiseChl = (deterministicHash(year * 211 + month * 29 + regionId.length) - 0.5) * 0.28;
-
-      // Simulate occasional winter cloud-cover missing month (e.g., Jan 2019 in Tsugaru)
-      const isMissing = year === 2019 && month === 1 && regionId === 'tsugaru';
-      const cov = isMissing ? 0.22 : 0.72 + deterministicHash(year * 17 + month) * 0.25;
-
-      rows.push({
-        year,
-        month,
-        label: `${year}-${String(month).padStart(2, '0')}`,
-        sst: isMissing ? null : Number((baseSst + slopeSst * t + seasonalSst + noiseSst).toFixed(2)),
-        chlorA: isMissing
-          ? null
-          : Number(Math.max(0.14, baseChl + slopeChl * t + spring + autumn + noiseChl).toFixed(3)),
-        coverageRatio: Number(cov.toFixed(2)),
-      });
-    }
-  }
-  return rows;
+  return MONTHLY_SERIES[regionId] ?? [];
 }
 
 export function buildCandidateRoutes(

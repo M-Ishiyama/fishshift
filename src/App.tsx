@@ -11,9 +11,11 @@ import {
   buildOceanGrid,
   extractHotspots,
 } from './data/oceanData';
+import { useT } from './i18n/I18nProvider';
 import type { MapLayer, RegionId, SpeciesId, TabId } from './types/ocean';
 
 export default function App() {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<TabId>('map');
   const [regionId, setRegionId] = useState<RegionId>('tsugaru');
   const [speciesId, setSpeciesId] = useState<SpeciesId>('thunnus_orientalis');
@@ -36,8 +38,8 @@ export default function App() {
   const hotspots = useMemo(() => extractHotspots(grid, speciesId), [grid, speciesId]);
 
   const occurrences = useMemo(
-    () => buildObisOccurrences(regionId, speciesId, grid),
-    [regionId, speciesId, grid]
+    () => buildObisOccurrences(regionId, speciesId),
+    [regionId, speciesId]
   );
 
   const activeHotspot = useMemo(
@@ -177,7 +179,7 @@ export default function App() {
       <footer className="border-t border-slate-800/80 bg-[#070B12] py-4 px-6">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
           <span>FishShift — Ocean Trend &amp; Fuel-Aware Fishing Intelligence Prototype</span>
-          <span>表示データ: 事前キャッシュ・シミュレーション（実航海判断には使用不可）</span>
+          <span>{t('app.footer.attribution')}</span>
         </div>
       </footer>
     </div>

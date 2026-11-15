@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
-import { REGIONS, buildMonthlyTimeSeries } from '../data/oceanData';
+import { PROVENANCE, REGIONS, buildMonthlyTimeSeries } from '../data/oceanData';
+import { useT } from '../i18n/I18nProvider';
+import { useFormat } from '../i18n/format';
+import { useName, useNasaSource, useRegionText } from '../i18n/render';
 import type { RegionId } from '../types/ocean';
 import { aggregateAnnualSeries, computeLinearTrend } from '../utils/oceanMath';
 
@@ -10,6 +13,11 @@ interface TrendExplorerViewProps {
 }
 
 export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerViewProps) {
+  const t = useT();
+  const fmt = useFormat();
+  const name = useName();
+  const regionText = useRegionText();
+  const nasaSource = useNasaSource();
   const [variable, setVariable] = useState<'sst' | 'chlor_a'>('sst');
   const [mode, setMode] = useState<'annual' | 'monthly'>('annual');
   const [startYear, setStartYear] = useState<number>(2016);
@@ -29,7 +37,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
       const annual = aggregateAnnualSeries(monthlyFiltered, variable, 9);
       return annual.map((a) => ({
         x: a.year,
-        label: `${a.year}年`,
+        label: fmt.year(a.year),
         y: a.value,
         coverage: a.coverageRatio,
         validMonths: a.validMonths,
@@ -50,7 +58,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
         seriesPoints.map((p) => ({ x: p.x, y: p.y, coverage: p.coverage })),
         variable,
         regionId,
-        mode === 'annual' ? 'OLS 年次線形回帰 (有効月 ≥ 9/12)' : 'OLS 月次線形回帰（季節変動含む）'
+        t(mode === 'annual' ? 'trend.method.annual' : 'trend.method.monthly')
       ),
     [seriesPoints, variable, regionId, mode]
   );
@@ -157,10 +165,10 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
 
   const statusJa =
     trend.status === 'SIGNIFICANT'
-      ? '統計的に有意な傾向 (p < 0.05)'
+      ? t('trend.status.significant')
       : trend.status === 'NOT SIGNIFICANT'
-        ? '有意差なし (p ≥ 0.05)'
-        : 'データ不足のため判定不能';
+        ? t('trend.status.notSignificant')
+        : t('trend.status.insufficient');
 
   const hoveredPoint = hoveredIdx !== null ? seriesPoints[hoveredIdx] : null;
 
@@ -170,14 +178,22 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4 border-b border-slate-800/80 pb-3">
         <div>
           <h1 className="font-display text-xl font-semibold text-slate-50">
-            海洋トレンド統計解析 (Trend Explorer)
+            {t('trend.heading')}
           </h1>
           <p className="mt-0.5 text-xs text-slate-400">
-            <span>対象課題: NASA Earth System Trend Detective</span>
+            <span>{t('trend.subtitle.challenge')}</span>
             <span className="mx-2 text-slate-600">·</span>
-            <span>海域: {region.nameJa}</span>
+            <span>{t('trend.subtitle.region', { region: name(region) })}</span>
             <span className="mx-2 text-slate-600">·</span>
-            <span>手法: {trend.method}</span>
+            <span>{t('trend.subtitle.method', { method: trend.method })}</span>
+            <span className="mx-2 text-slate-600">·</span>
+            <span>
+              {t('trend.subtitle.source', {
+                source: nasaSource(variable === 'sst' ? PROVENANCE.sst : PROVENANCE.chlorA, {
+                  withDataset: true,
+                }),
+              })}
+            </span>
           </p>
         </div>
 
@@ -187,17 +203,17 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
           className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-[#0D1524] px-3 py-1.5 text-xs text-slate-300 hover:border-slate-600 hover:text-slate-100 cursor-pointer"
         >
           <HelpCircle className="h-3.5 w-3.5 text-cyan-400" />
-          <span>統計的有意性とは？</span>
+          <span>{t('trend.explain.toggle')}</span>
         </button>
       </div>
 
       {showExplain && (
         <div className="mb-5 rounded-lg border border-slate-700 bg-[#0D1524] p-4 text-xs leading-relaxed text-slate-300">
           <p className="font-semibold text-slate-100 mb-1">
-            p値と95%信頼区間の読み方（科学的な注意点）
+            {t('trend.explain.title')}
           </p>
           <p>
-            p値 &lt; 0.05（SIGNIFICANT）は「観測期間中に傾きがゼロであるという帰無仮説のもとでは起こりにくい変化が見られる」ことを示しますが、生態学的な重要性や将来の継続を直接保証するものではありません。また、月次データでは季節周期や時間的自己相関によりp値が小さく見えやすいため、本画面では年次平均（有効月 9か月以上）を標準の傾向検定として推奨しています。
+            {t('trend.explain.body')}
           </p>
         </div>
       )}
@@ -205,7 +221,9 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
       {/* Control Bar */}
       <div className="mb-5 grid grid-cols-1 gap-4 rounded-lg border border-slate-800 bg-[#0D1524] p-4 md:grid-cols-4">
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1.5">解析変数 (NASA観測)</label>
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">
+            {t('trend.control.variable')}
+          </label>
           <div className="grid grid-cols-2 gap-1 rounded bg-[#070B12] p-1 border border-slate-800">
             <button
               type="button"
@@ -216,7 +234,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              海面水温 SST
+              {t('trend.variable.sst')}
             </button>
             <button
               type="button"
@@ -227,13 +245,15 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              クロロフィルa
+              {t('trend.variable.chlorA')}
             </button>
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1.5">対象海域</label>
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">
+            {t('trend.control.region')}
+          </label>
           <div className="grid grid-cols-2 gap-1 rounded bg-[#070B12] p-1 border border-slate-800">
             <button
               type="button"
@@ -244,7 +264,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              北海道南部
+              {regionText.shortName(REGIONS.tsugaru)}
             </button>
             <button
               type="button"
@@ -255,13 +275,15 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              三陸沖
+              {regionText.shortName(REGIONS.sanriku)}
             </button>
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-1.5">時間集計</label>
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">
+            {t('trend.control.aggregation')}
+          </label>
           <div className="grid grid-cols-2 gap-1 rounded bg-[#070B12] p-1 border border-slate-800">
             <button
               type="button"
@@ -272,7 +294,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              年平均 (推奨)
+              {t('trend.mode.annual')}
             </button>
             <button
               type="button"
@@ -283,14 +305,14 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              月次推移
+              {t('trend.mode.monthly')}
             </button>
           </div>
         </div>
 
         <div>
           <label htmlFor="start-year-select" className="block text-xs font-medium text-slate-400 mb-1.5">
-            解析開始年 (〜2025年)
+            {t('trend.control.startYear')}
           </label>
           <select
             id="start-year-select"
@@ -300,7 +322,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
           >
             {[2016, 2017, 2018, 2019, 2020, 2021].map((y) => (
               <option key={y} value={y}>
-                {y}年 – 2025年 ({2025 - y + 1}年間)
+                {fmt.yearRange(y, 2025)}
               </option>
             ))}
           </select>
@@ -310,14 +332,16 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
       {/* KPI Strip */}
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="rounded-lg border border-slate-800 bg-[#0D1524] p-4">
-          <div className="text-xs text-slate-400">年あたり線形傾き</div>
+          <div className="text-xs text-slate-400">{t('trend.kpi.slope')}</div>
           <div className="mt-1 flex items-baseline gap-1.5 font-mono text-2xl font-semibold text-slate-50 tabular-nums">
             <span>
               {trend.slopePerYear !== null
                 ? `${trend.slopePerYear >= 0 ? '+' : ''}${trend.slopePerYear.toFixed(variable === 'sst' ? 3 : 4)}`
                 : 'N/A'}
             </span>
-            <span className="text-xs font-normal text-slate-400">{trend.unit}/年</span>
+            <span className="text-xs font-normal text-slate-400">
+              {t('trend.kpi.slopeUnit', { unit: trend.unit })}
+            </span>
           </div>
           <div className="mt-1 font-mono text-[11px] text-slate-500 tabular-nums">
             95% CI: [{trend.ci95Low !== null ? trend.ci95Low.toFixed(3) : '—'},{' '}
@@ -326,7 +350,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-[#0D1524] p-4">
-          <div className="text-xs text-slate-400">統計的有意性 (p値)</div>
+          <div className="text-xs text-slate-400">{t('trend.kpi.significance')}</div>
           <div className="mt-1 font-mono text-2xl font-semibold text-slate-50 tabular-nums">
             {trend.pValue !== null ? (trend.pValue < 0.001 ? '< 0.001' : trend.pValue.toFixed(4)) : 'N/A'}
           </div>
@@ -334,7 +358,7 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-[#0D1524] p-4">
-          <div className="text-xs text-slate-400">期間平均値</div>
+          <div className="text-xs text-slate-400">{t('trend.kpi.mean')}</div>
           <div className="mt-1 flex items-baseline gap-1.5 font-mono text-2xl font-semibold text-slate-50 tabular-nums">
             <span>
               {trend.meanValue !== null
@@ -344,17 +368,19 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
             <span className="text-xs font-normal text-slate-400">{trend.unit}</span>
           </div>
           <div className="mt-1 font-mono text-[11px] text-slate-500 tabular-nums">
-            決定係数 R²: {trend.rSquared !== null ? trend.rSquared.toFixed(3) : '—'}
+            {t('trend.kpi.rSquared', {
+              value: trend.rSquared !== null ? fmt.number(trend.rSquared, 3) : '—',
+            })}
           </div>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-[#0D1524] p-4">
-          <div className="text-xs text-slate-400">有効観測数 / 衛星被覆率</div>
+          <div className="text-xs text-slate-400">{t('trend.kpi.coverage')}</div>
           <div className="mt-1 font-mono text-2xl font-semibold text-slate-50 tabular-nums">
             n = {trend.n}
           </div>
           <div className="mt-1 font-mono text-[11px] text-slate-500 tabular-nums">
-            平均有効画素被覆率: {(trend.meanCoverage * 100).toFixed(1)}%
+            {t('trend.kpi.coverageDetail', { percent: fmt.percent(trend.meanCoverage, 1) })}
           </div>
         </div>
       </div>
@@ -364,20 +390,25 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
         <div className="rounded-lg border border-slate-800 bg-[#0D1524] p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="font-semibold text-slate-200">
-              {region.nameJa} — {variable === 'sst' ? '海面水温 (SST)' : 'クロロフィルa濃度 (Chl-a)'} 時系列
+              {t('trend.chart.title', {
+                region: name(region),
+                variable: t(
+                  variable === 'sst' ? 'trend.variableLong.sst' : 'trend.variableLong.chlorA'
+                ),
+              })}
             </div>
             <div className="flex items-center gap-4 text-[11px] text-slate-400">
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-block h-0.5 w-4 bg-cyan-400" />
-                集計系列
+                {t('trend.chart.series')}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-amber-400" />
-                線形トレンド
+                {t('trend.chart.trendLine')}
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-block h-2.5 w-4 bg-amber-400/20 border border-amber-400/40" />
-                95%信頼帯
+                {t('trend.chart.ciBand')}
               </span>
             </div>
           </div>
@@ -495,11 +526,13 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
             {/* Hover Tooltip */}
             {hoveredPoint && hoveredPoint.y !== null && (
               <div className="mt-2 flex items-center justify-between rounded border border-slate-700 bg-[#070B12] px-3 py-1.5 font-mono text-xs text-slate-200 tabular-nums">
-                <span>時点: {hoveredPoint.label}</span>
+                <span>{t('trend.tooltip.time', { label: hoveredPoint.label })}</span>
                 <span>
                   {variable === 'sst' ? 'SST' : 'Chl-a'}: {hoveredPoint.y.toFixed(variable === 'sst' ? 2 : 3)} {trend.unit}
                 </span>
-                <span>画素被覆率: {(hoveredPoint.coverage * 100).toFixed(0)}%</span>
+                <span>
+                  {t('trend.tooltip.coverage', { percent: fmt.percent(hoveredPoint.coverage, 0) })}
+                </span>
               </div>
             )}
           </div>
@@ -509,29 +542,44 @@ export function TrendExplorerView({ regionId, onChangeRegion }: TrendExplorerVie
         <aside className="flex flex-col gap-4 rounded-lg border border-slate-800 bg-[#0D1524] p-4 text-xs leading-relaxed">
           <div>
             <h2 className="font-display text-sm font-semibold text-slate-100">
-              解析サマリーと解釈
+              {t('trend.summary.title')}
             </h2>
             <p className="mt-2 text-slate-300">
-              {region.nameJa}における {startYear}–2025年の{variable === 'sst' ? '海面水温' : 'クロロフィルa濃度'}は、
-              {trend.slopePerYear !== null
-                ? `推定 ${trend.slopePerYear >= 0 ? '+' : ''}${trend.slopePerYear.toFixed(variable === 'sst' ? 3 : 4)} ${trend.unit}/年`
-                : '解析不能'}
-              の線形傾向を示しています（n = {trend.n}, p ={' '}
-              {trend.pValue !== null ? trend.pValue.toFixed(4) : 'N/A'}）。
+              {t('trend.summary.body', {
+                region: name(region),
+                range: fmt.yearRange(startYear, 2025),
+                variable: t(
+                  variable === 'sst' ? 'trend.variableShort.sst' : 'trend.variableShort.chlorA'
+                ),
+                slope:
+                  trend.slopePerYear !== null
+                    ? t('trend.summary.slope', {
+                        value: fmt.signed(trend.slopePerYear, variable === 'sst' ? 3 : 4),
+                        unit: trend.unit,
+                      })
+                    : t('trend.summary.slopeUnavailable'),
+                n: fmt.integer(trend.n),
+                pValue: trend.pValue !== null ? fmt.number(trend.pValue, 4) : 'N/A',
+              })}
             </p>
             <p className="mt-2 text-slate-400">
-              {trend.status === 'SIGNIFICANT'
-                ? 'p < 0.05 により、観測期間中の変化傾向は統計的に有意と判定されました。水温シフトに伴う回遊経路・餌生物分布の再配置を検証する動機となります。'
-                : 'p ≥ 0.05 のため、統計的に有意な単調変化は確認されませんでした（ただし「変化が全くない」ことの証明ではありません）。'}
+              {t(
+                trend.status === 'SIGNIFICANT'
+                  ? 'trend.interpretation.significant'
+                  : 'trend.interpretation.notSignificant'
+              )}
             </p>
           </div>
 
           <div className="border-t border-slate-800 pt-3">
-            <h3 className="font-semibold text-slate-200">科学的限界・留意事項</h3>
+            <h3 className="font-semibold text-slate-200">{t('trend.limitations.title')}</h3>
             <ul className="mt-2 space-y-1.5 text-slate-400 list-disc pl-4">
-              <li>統計的有意性は、現場の漁獲量や生態学的変化の大きさと同義ではありません。</li>
-              <li>冬季や梅雨期の雲被覆による欠損（例: 2019年1月）が年平均の偏りを生む可能性があります。</li>
-              <li>Chl-aは植物プランクトン指標であり、魚類の餌となる動物プランクトンや小魚の直接計測ではありません。</li>
+              <li>{t('trend.limitation.1')}</li>
+              <li>{t('trend.limitation.2')}</li>
+              <li>{t('trend.limitation.3')}</li>
+              <li>{t('trend.limitation.4')}</li>
+              <li>{t('trend.limitation.5')}</li>
+              <li>{t('trend.limitation.6')}</li>
             </ul>
           </div>
         </aside>

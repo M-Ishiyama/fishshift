@@ -1,42 +1,32 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useT } from '../i18n/I18nProvider';
 
 export interface DemoStep {
   step: number;
-  title: string;
-  description: string;
+  titleKey: DemoStepTitleKey;
+  descriptionKey: DemoStepDescriptionKey;
 }
 
+type DemoStepTitleKey =
+  | 'demo.step1.title'
+  | 'demo.step2.title'
+  | 'demo.step3.title'
+  | 'demo.step4.title'
+  | 'demo.step5.title';
+
+type DemoStepDescriptionKey =
+  | 'demo.step1.description'
+  | 'demo.step2.description'
+  | 'demo.step3.description'
+  | 'demo.step4.description'
+  | 'demo.step5.description';
+
 export const DEMO_STEPS: DemoStep[] = [
-  {
-    step: 1,
-    title: '対象海域と海面水温 (SST) の確認',
-    description:
-      '北海道南部・津軽海峡（40.5–43.0°N）の9月期サンプル海域を表示中。暖流の張り出しと冷水の境界（潮目）を確認します。',
-  },
-  {
-    step: 2,
-    title: 'クロロフィルa (Chl-a) 分布への切替',
-    description:
-      '基礎生産の指標であるChl-a濃度へ切り替え、植物プランクトンが集積しやすい前線帯と欠損画素の扱いを確認します。',
-  },
-  {
-    step: 3,
-    title: '適合指数とOBIS過去出現記録の重ね合わせ',
-    description:
-      '探索用適合指数マップ上にクロマグロのOBIS過去記録を重ね、環境条件と過去実績が重なる候補ポイントAを選択します。',
-  },
-  {
-    step: 4,
-    title: 'Trend Explorer による長期統計検証',
-    description:
-      '2016–2025年の年平均SST時系列を線形回帰し、年あたり上昇率・p値・95%信頼区間から長期変化の有意性を評価します。',
-  },
-  {
-    step: 5,
-    title: 'Route Lab での省燃料ルート比較試算',
-    description:
-      '選択した候補ポイントAに対し、最短ライン（Route A）と海流・波浪配慮ライン（Route B）の距離・時間・燃料コストを比較します。',
-  },
+  { step: 1, titleKey: 'demo.step1.title', descriptionKey: 'demo.step1.description' },
+  { step: 2, titleKey: 'demo.step2.title', descriptionKey: 'demo.step2.description' },
+  { step: 3, titleKey: 'demo.step3.title', descriptionKey: 'demo.step3.description' },
+  { step: 4, titleKey: 'demo.step4.title', descriptionKey: 'demo.step4.description' },
+  { step: 5, titleKey: 'demo.step5.title', descriptionKey: 'demo.step5.description' },
 ];
 
 interface DemoBannerProps {
@@ -52,6 +42,7 @@ export function DemoBanner({
   onNext,
   onClose,
 }: DemoBannerProps) {
+  const t = useT();
   const current = DEMO_STEPS[currentStepIndex];
   if (!current) return null;
 
@@ -63,9 +54,9 @@ export function DemoBanner({
             DEMO {current.step}/{DEMO_STEPS.length}
           </span>
           <div className="min-w-0 text-xs">
-            <span className="font-semibold text-slate-100">{current.title}</span>
+            <span className="font-semibold text-slate-100">{t(current.titleKey)}</span>
             <span className="mx-2 text-slate-500">·</span>
-            <span className="text-slate-300">{current.description}</span>
+            <span className="text-slate-300">{t(current.descriptionKey)}</span>
           </div>
         </div>
 
@@ -77,20 +68,22 @@ export function DemoBanner({
             className="inline-flex items-center gap-1 rounded border border-slate-700 bg-[#070B12] px-2.5 py-1 text-xs text-slate-200 hover:border-slate-600 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
-            <span>戻る</span>
+            <span>{t('demo.prev')}</span>
           </button>
           <button
             type="button"
             onClick={currentStepIndex < DEMO_STEPS.length - 1 ? onNext : onClose}
             className="inline-flex items-center gap-1 rounded bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-cyan-400 cursor-pointer"
           >
-            <span>{currentStepIndex < DEMO_STEPS.length - 1 ? '次のステップ' : 'デモ完了'}</span>
+            <span>
+              {currentStepIndex < DEMO_STEPS.length - 1 ? t('demo.next') : t('demo.finish')}
+            </span>
             {currentStepIndex < DEMO_STEPS.length - 1 && <ChevronRight className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"
             onClick={onClose}
-            aria-label="デモを閉じる"
+            aria-label={t('demo.close')}
             className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200 cursor-pointer"
           >
             <X className="h-4 w-4" />

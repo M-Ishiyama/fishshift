@@ -1,5 +1,7 @@
 import { Play, Square } from 'lucide-react';
+import { useT } from '../i18n/I18nProvider';
 import type { TabId } from '../types/ocean';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface TopBarProps {
   activeTab: TabId;
@@ -15,6 +17,8 @@ const NAV_ITEMS: { id: TabId; label: string }[] = [
 ];
 
 export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: TopBarProps) {
+  const t = useT();
+
   return (
     <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#070B12]/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-8 px-6 py-3.5">
@@ -55,7 +59,8 @@ export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: Top
           })}
         </nav>
 
-        <div className="shrink-0">
+        <div className="flex shrink-0 items-center gap-3">
+          <LanguageSwitcher />
           <button
             type="button"
             onClick={onToggleDemo}
@@ -68,12 +73,12 @@ export function TopBar({ activeTab, onSelectTab, demoActive, onToggleDemo }: Top
             {demoActive ? (
               <>
                 <Square className="h-3.5 w-3.5" />
-                <span>デモ終了</span>
+                <span>{t('demo.stop')}</span>
               </>
             ) : (
               <>
                 <Play className="h-3.5 w-3.5" />
-                <span>デモ再生</span>
+                <span>{t('demo.start')}</span>
               </>
             )}
           </button>

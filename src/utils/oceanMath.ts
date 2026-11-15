@@ -1,8 +1,10 @@
 import type {
+  CautionKind,
   MonthlyObservation,
   OceanGridCell,
   PointLatLon,
   RouteEstimate,
+  RouteLabelKey,
   RouteWaypointMetric,
   TrendResult,
   VesselParams,
@@ -251,7 +253,7 @@ function sampleGridCondition(grid: OceanGridCell[], pt: PointLatLon): OceanGridC
 
 export function calculateRouteEstimate(
   routeId: 'A' | 'B',
-  labelJa: string,
+  labelKey: RouteLabelKey,
   strategyEn: string,
   points: PointLatLon[],
   grid: OceanGridCell[],
@@ -310,18 +312,19 @@ export function calculateRouteEstimate(
   const avgWind = windSum / segCount;
   const avgAssist = assistSum / segCount;
 
-  let cautionNoteJa = '海況は比較的穏やかな試算条件です。';
-  if (maxWave >= 2.1 || avgWind >= 11.0) {
-    cautionNoteJa = `最大波高 ${maxWave.toFixed(1)} m / 平均風速 ${avgWind.toFixed(1)} m/s の区間あり。波浪抵抗と安全余力に注意。`;
-  } else if (avgAssist > 0.4) {
-    cautionNoteJa = `順流成分（平均 +${avgAssist.toFixed(2)} kt）を活用する軌道。`;
-  } else if (avgAssist < -0.4) {
-    cautionNoteJa = `逆流区間（平均 ${avgAssist.toFixed(2)} kt）により対地速度低下。`;
-  }
+  // Which caution to show, not its wording: the sentence is a dictionary entry.
+  const cautionKind: CautionKind =
+    maxWave >= 2.1 || avgWind >= 11.0
+      ? 'roughSeas'
+      : avgAssist > 0.4
+        ? 'favorableCurrent'
+        : avgAssist < -0.4
+          ? 'adverseCurrent'
+          : 'calm';
 
   return {
     routeId,
-    labelJa,
+    labelKey,
     strategyEn,
     points,
     waypoints,
@@ -333,6 +336,11 @@ export function calculateRouteEstimate(
     maxWaveHeightM: maxWave,
     avgWindSpeedMs: avgWind,
     avgCurrentAssistKnots: avgAssist,
-    cautionNoteJa,
+    caution: {
+      kind: cautionKind,
+      maxWaveM: maxWave,
+      avgWindMs: avgWind,
+      avgAssistKnots: avgAssist,
+    },
   };
 }

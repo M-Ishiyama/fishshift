@@ -1,0 +1,69 @@
+{
+  "sst": {
+    "dataset_id": "jplMURSST41mday",
+    "provider": "NASA JPL (via NOAA CoastWatch ERDDAP)",
+    "product_name": "GHRSST Level 4 MUR Global Foundation SST Analysis v4.1 (Monthly)",
+    "nasa_short_name": "NASA JPL MUR L4 v4.1",
+    "nasa_platform": "GHRSST / 多衛星統合 (MODIS, AVHRR, AMSR-E 等)",
+    "distribution": "NOAA CoastWatch ERDDAP",
+    "variable": "analysed_sst",
+    "unit": "degC",
+    "source_url": "https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41mday.html",
+    "observation_start": "2016-01",
+    "observation_end": "2025-12",
+    "retrieved_at_utc": "2026-11-14T08:27:29Z",
+    "processing": "regional monthly valid-pixel summary; server-side strided subsample averaged into a 20x26 cell grid; out-of-range values (-2..40) dropped; null kept as null (land decided by region polygons, sea+null = cloud gap)",
+    "license_note": "NASA data are open. Served via NOAA CoastWatch ERDDAP; cite both NASA as producer and the ERDDAP distribution path.",
+    "data_kind": "observed"
+  },
+  "chlorA": {
+    "dataset_id": "erdMH1chlamday_R2022SQ",
+    "provider": "NASA OB.DAAC / MODIS-Aqua (via NOAA CoastWatch ERDDAP)",
+    "product_name": "Chlorophyll-a, Aqua MODIS, NPP, L3SMI, Global 4km, R2022 Science Quality (Monthly)",
+    "nasa_short_name": "NASA OB.DAAC MODIS-Aqua L3SMI R2022 SQ",
+    "nasa_platform": "NASA Aqua 衛星 / MODIS センサー",
+    "distribution": "NOAA CoastWatch ERDDAP",
+    "variable": "chlor_a",
+    "unit": "mg m-3",
+    "source_url": "https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chlamday_R2022SQ.html",
+    "observation_start": "2016-01",
+    "observation_end": "2025-12",
+    "retrieved_at_utc": "2026-11-14T08:27:29Z",
+    "processing": "regional monthly valid-pixel summary; server-side strided subsample averaged into a 20x26 cell grid; out-of-range values (0..100) dropped; null kept as null (land decided by region polygons, sea+null = cloud gap)",
+    "license_note": "NASA data are open. Served via NOAA CoastWatch ERDDAP; cite both NASA as producer and the ERDDAP distribution path.",
+    "data_kind": "observed"
+  },
+  "obis": {
+    "dataset_id": "OBIS occurrence API v3",
+    "provider": "OBIS (Ocean Biodiversity Information System)",
+    "product_name": "OBIS occurrence records",
+    "variable": "occurrence",
+    "unit": "count",
+    "source_url": "https://api.obis.org/v3/occurrence",
+    "observation_start": "all available",
+    "observation_end": "2026-11",
+    "retrieved_at_utc": "2026-11-14T08:27:29Z",
+    "processing": "bbox + scientific name query; all returned records kept unmodified",
+    "license_note": "OBIS records carry per-dataset licences; see dataset_id of each record.",
+    "data_kind": "observed",
+    "record_counts": {
+      "thunnus_orientalis:tsugaru": 2,
+      "oncorhynchus_keta:tsugaru": 8,
+      "sardinops_melanostictus:tsugaru": 7,
+      "thunnus_orientalis:sanriku": 9,
+      "oncorhynchus_keta:sanriku": 1,
+      "sardinops_melanostictus:sanriku": 0
+    }
+  },
+  "estimated_fields": {
+    "fields": [
+      "currentSpeedMs",
+      "currentDirDeg",
+      "waveHeightM",
+      "windSpeedMs",
+      "windDirDeg"
+    ],
+    "data_kind": "estimated",
+    "note": "Not NASA observations. Parametric estimates retained for the Route Lab; must not be used for navigation."
+  }
+}
